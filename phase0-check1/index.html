@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>polyraptor — Phase 0 checkpoint 1</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 3rem auto; padding: 0 1rem; background: #fafafa; color: #111; }
+  #status { padding: 1rem; border-radius: 8px; background: #eee; margin-top: 1rem; white-space: pre-wrap; }
+  #status.ok { background: #d7f4dd; }
+  #status.missing { background: #f8d7d7; }
+  #log { margin-top: 1rem; font-family: ui-monospace, monospace; font-size: 0.9rem; background: #111; color: #0f0; padding: 1rem; border-radius: 8px; min-height: 3rem; }
+  h1 { font-size: 1.2rem; }
+</style>
+</head>
+<body>
+<h1>polyraptor — Phase 0, checkpoint 1</h1>
+<p>Tests nothing but the WebMCP tool round-trip itself: no Pyodide, no build step, one trivial tool. Open this page in ChatGPT's in-app browser (or Chrome with the WebMCP flag enabled), then ask the agent to call <code>polyraptor_ping</code> with any message.</p>
+<div id="status">checking for document.modelContext / navigator.modelContext...</div>
+<div id="log">(tool call log will appear here)</div>
+
+<script>
+  const statusEl = document.getElementById('status');
+  const logEl = document.getElementById('log');
+
+  function log(line) {
+    logEl.textContent += line + '\n';
+  }
+
+  // Per current WebMCP spec (May 27 2026 draft), the entry point moved from
+  // navigator.modelContext to document.modelContext. navigator.modelContext is
+  // deprecated as of Chromium 150 but kept as a fallback for older builds.
+  const modelContext = document.modelContext || navigator.modelContext;
+
+  if (modelContext && 'registerTool' in modelContext) {
+    statusEl.textContent = 'modelContext found (' + (document.modelContext ? 'document' : 'navigator') + '.modelContext). Registering polyraptor_ping...';
+    statusEl.className = 'ok';
+
+    modelContext.registerTool({
+      name: 'polyraptor_ping',
+      description: 'Trivial test tool for the polyraptor WebMCP challenge project. Echoes a message back and displays it on the page, to confirm the WebMCP tool round-trip works end to end before any Pyodide/visualization work is built on top of it.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', description: 'Any short message to echo back and display.' }
+        },
+        required: []
+      },
+      annotations: { readOnlyHint: true },
+      execute: async ({ message }) => {
+        const text = message || '(no message provided)';
+        const ts = new Date().toLocaleTimeString();
+        log('[' + ts + '] polyraptor_ping called with: ' + text);
+        statusEl.textContent = 'Tool called successfully at ' + ts + '.\nMessage: ' + text;
+        return 'pong: ' + text;
+      }
+    });
+
+    log('Tool "polyraptor_ping" registered. Waiting for a call...');
+  } else {
+    statusEl.textContent = 'No modelContext found on this page. This browser/context does not support WebMCP (or it is not enabled). Try ChatGPT\'s in-app browser, or Chrome with the WebMCP developer flag enabled.';
+    statusEl.className = 'missing';
+  }
+</script>
+</body>
+</html>

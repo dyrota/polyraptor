@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>polyraptor — Phase 0 checkpoint 2</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v314.0.6/full/pyodide.js"></script>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 3rem auto; padding: 0 1rem; background: #fafafa; color: #111; }
+  #status { padding: 1rem; border-radius: 8px; background: #eee; margin-top: 1rem; white-space: pre-wrap; }
+  #status.ok { background: #d7f4dd; }
+  #status.error { background: #f8d7d7; }
+</style>
+</head>
+<body>
+<h1>polyraptor — Phase 0, checkpoint 2</h1>
+<p>Tests whether Pyodide can load a locally-built, vendored wheel via an absolute same-origin URL — the same mechanism the real app will use for the on_step-instrumented polysearch/polysort wheels. This uses a throwaway dummy package, not the real libraries, to isolate the wheel-loading question on its own.</p>
+<p><strong>Must be served over http(s), not opened as a file:// URL</strong> — run <code>python3 -m http.server</code> in this directory and open <code>http://localhost:8000/</code>.</p>
+<div id="status">loading Pyodide...</div>
+
+<script>
+  const statusEl = document.getElementById('status');
+
+  async function main() {
+    try {
+      statusEl.textContent = 'loading Pyodide runtime from CDN...';
+      const pyodide = await loadPyodide();
+
+      statusEl.textContent = 'Pyodide loaded. Loading micropip...';
+      await pyodide.loadPackage('micropip');
+      const micropip = pyodide.pyimport('micropip');
+
+      const wheelUrl = window.location.origin + '/wheels/polyraptor_dummy-0.0.1-py3-none-any.whl';
+      statusEl.textContent = 'micropip loaded. Installing local wheel from:\n' + wheelUrl;
+      await micropip.install(wheelUrl);
+
+      statusEl.textContent = 'Wheel installed. Running Python...';
+      const result = pyodide.runPython('import polyraptor_dummy; polyraptor_dummy.ping()');
+
+      statusEl.textContent = 'SUCCESS.\nPython (running in-browser via Pyodide) returned:\n"' + result + '"';
+      statusEl.className = 'ok';
+    } catch (err) {
+      statusEl.textContent = 'FAILED at some step. Error:\n' + (err && err.stack ? err.stack : String(err));
+      statusEl.className = 'error';
+      console.error(err);
+    }
+  }
+
+  main();
+</script>
+</body>
+</html>

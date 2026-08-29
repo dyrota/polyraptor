@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>polyraptor — Phase 0 checkpoint 3</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v314.0.6/full/pyodide.js"></script>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 3rem auto; padding: 0 1rem; background: #fafafa; color: #111; }
+  #status { padding: 1rem; border-radius: 8px; background: #eee; margin-top: 1rem; white-space: pre-wrap; }
+  #status.ok { background: #d7f4dd; }
+  #status.error { background: #f8d7d7; }
+  #events { margin-top: 1rem; font-family: ui-monospace, monospace; font-size: 0.8rem; background: #111; color: #0f0; padding: 1rem; border-radius: 8px; max-height: 300px; overflow: auto; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>polyraptor — Phase 0, checkpoint 3</h1>
+<p>Tests the real, on_step-instrumented polysearch wheel (0.1.0) running a real a_star_search on a real MazeProblem, with a real JS callback collecting events — specifically to determine how Pyodide marshals a Python dict across the Python-to-JS callback boundary (plain object vs PyProxy), before any UI/trace-collector code is built on top of an assumption about it.</p>
+<p><strong>Serve over http, not file://</strong>: <code>cd phase0-check3 && python3 -m http.server 8001</code>, then open <code>http://localhost:8001/</code>.</p>
+<div id="status">loading Pyodide...</div>
+<div id="events"></div>
+
+<script>
+  const statusEl = document.getElementById('status');
+  const eventsEl = document.getElementById('events');
+  const collectedEvents = [];
+  let rawEventTypeSeen = null;
+
+  // The Python side JSON-serializes each event before calling this, so we
+  // always receive a plain string here regardless of Pyodide's dict/PyProxy
+  // marshalling behavior (which turned out to differ from what the toJs()
+  // docs describe in this Pyodide version) — sidesteps that ambiguity entirely.
+  function onStep(jsonString) {
+    rawEventTypeSeen = rawEventTypeSeen || ('JSON string (typeof=' + typeof jsonString + ')');
+    try {
+      collectedEvents.push(JSON.parse(jsonString));
+    } catch (e) {
+      collectedEvents.push({ __parse_error__: String(e), __raw__: String(jsonString) });
+    }
+  }
+
+  async function main() {
+    try {
+      statusEl.textContent = 'loading Pyodide runtime from CDN...';
+      const pyodide = await loadPyodide();
+
+      statusEl.textContent = 'Pyodide loaded. Loading micropip...';
+      await pyodide.loadPackage('micropip');
+      const micropip = pyodide.pyimport('micropip');
+
+      const wheelUrl = window.location.origin + '/wheels/polysearch-0.1.0-py3-none-any.whl';
+      statusEl.textContent = 'Installing real polysearch 0.1.0 wheel from:\n' + wheelUrl;
+      await micropip.install(wheelUrl);
+
+      statusEl.textContent = 'Wheel installed. Registering JS callback and running a real a_star_search with on_step...';
+      pyodide.globals.set('on_step_js', onStep);
+
+      pyodide.runPython(`
+import json
+from polysearch.algorithms.a_star import a_star_search
+from polysearch.problems.maze import MazeProblem
+
+def _json_bridge(event_dict):
+    on_step_js(json.dumps(event_dict))
+
+maze = [
+    [0, 0, 0, 0],
+    [1, 1, 0, 1],
+    [0, 0, 0, 0],
+    [0, 1, 1, 0],
+]
+problem = MazeProblem(maze, (0, 0), (3, 3))
+path = a_star_search(problem, heuristic=problem.manhattan_distance_heuristic, on_step=_json_bridge)
+      `);
+
+      const summary = 'SUCCESS.\n'
+        + 'Total on_step events received in JS: ' + collectedEvents.length + '\n'
+        + 'Dict marshalling observed: ' + rawEventTypeSeen + '\n'
+        + 'First event: ' + JSON.stringify(collectedEvents[0]) + '\n'
+        + 'Last event: ' + JSON.stringify(collectedEvents[collectedEvents.length - 1]);
+
+      statusEl.textContent = summary;
+      statusEl.className = 'ok';
+      eventsEl.textContent = collectedEvents.map((e, i) => i + ': ' + JSON.stringify(e)).join('\n');
+    } catch (err) {
+      statusEl.textContent = 'FAILED. Error:\n' + (err && err.stack ? err.stack : String(err));
+      statusEl.className = 'error';
+      console.error(err);
+    }
+  }
+
+  main();
+</script>
+</body>
+</html>

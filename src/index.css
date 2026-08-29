@@ -1,0 +1,150 @@
+:root {
+  /* This app is light-only (hardcoded light backgrounds/dark text throughout) —
+     "light dark" here would tell the browser to apply native dark-mode theming
+     to form controls (e.g. white text on <select>) on top of this light-only
+     layout, which is unreadable. Declare light-only to match reality. */
+  color-scheme: light;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: #f7f7f9;
+  color: #1a1a1a;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  padding: 1rem 1.5rem;
+  background: #111827;
+  color: white;
+}
+.app-header h1 { margin: 0; font-size: 1.4rem; }
+.app-subtitle { margin: 0.25rem 0 0.5rem; opacity: 0.8; font-size: 0.9rem; }
+
+.status-bar { display: flex; gap: 1rem; font-size: 0.8rem; }
+.status-ok { color: #4caf50; }
+.status-warn { color: #ffb74d; }
+.status-neutral { color: #90caf9; }
+
+.app-tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.5rem 1.5rem 0;
+  background: #1f2937;
+}
+.app-tabs button {
+  background: none;
+  border: none;
+  color: #ccc;
+  padding: 0.6rem 1.2rem;
+  cursor: pointer;
+  border-radius: 6px 6px 0 0;
+  font-size: 0.95rem;
+}
+.app-tabs button.active { background: #f7f7f9; color: #111; font-weight: 600; }
+
+.app-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .app-main { grid-template-columns: 1fr; }
+}
+
+.app-content {
+  background: white;
+  border-radius: 10px;
+  padding: 1.25rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  overflow-x: auto;
+}
+
+.app-sidebar { position: sticky; top: 1rem; }
+
+.coming-soon {
+  padding: 3rem 1rem;
+  text-align: center;
+  color: #888;
+  font-style: italic;
+}
+
+.search-controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.search-controls button, .search-controls select {
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  background: white;
+  cursor: pointer;
+}
+.search-empty { color: #888; }
+
+.maze-canvas-wrapper canvas { border: 1px solid #ccc; border-radius: 4px; max-width: 100%; }
+.maze-legend { display: flex; gap: 1rem; margin-top: 0.5rem; font-size: 0.8rem; color: #555; }
+.maze-legend .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border-radius: 2px; }
+
+.playback-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.5rem;
+  background: #f0f0f3;
+  border-radius: 8px;
+}
+.playback-bar input[type="range"] { flex: 1; }
+.playback-bar button { padding: 0.3rem 0.6rem; border-radius: 6px; border: 1px solid #ccc; background: white; cursor: pointer; }
+.playback-position { font-size: 0.8rem; color: #555; min-width: 4.5rem; text-align: center; }
+
+.search-summary { margin-top: 0.75rem; font-size: 0.9rem; color: #333; }
+
+.nqueens-caption, .mc-caption { color: #555; font-size: 0.9rem; margin-top: 0.5rem; }
+
+.mc-wrapper { display: flex; align-items: center; gap: 1rem; }
+.mc-bank { flex: 1; min-height: 100px; border: 2px dashed #aaa; border-radius: 8px; padding: 0.5rem; text-align: center; position: relative; }
+.mc-icons { font-size: 1.5rem; }
+.mc-boat { position: absolute; bottom: 4px; right: 8px; font-size: 1.3rem; }
+.mc-river { padding: 0 0.5rem; color: #1565c0; font-weight: 600; writing-mode: vertical-rl; }
+
+.tool-call-log {
+  background: #0d1117;
+  color: #c9d1d9;
+  border-radius: 10px;
+  padding: 1rem;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.tool-call-log h3 { margin-top: 0; font-size: 0.95rem; }
+.tool-call-log ul { list-style: none; margin: 0; padding: 0; }
+.tool-call-log-empty { font-size: 0.85rem; color: #8b949e; }
+.tool-call-entry { border-bottom: 1px solid #21262d; padding: 0.5rem 0; }
+.tool-call-header { display: flex; justify-content: space-between; font-size: 0.85rem; }
+.tool-call-name { font-weight: 600; color: #79c0ff; }
+.status-ok .tool-call-status { color: #3fb950; }
+.status-error .tool-call-status { color: #f85149; }
+.status-running .tool-call-status { color: #d29922; }
+.tool-call-args, .tool-call-result, .tool-call-error {
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tool-call-result { color: #8b949e; }
+.tool-call-error { color: #f85149; }
