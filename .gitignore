@@ -7,3 +7,4 @@ phase0-check2/dummy_pkg/*.egg-info/
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
+.smoke-shots/
