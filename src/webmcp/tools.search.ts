@@ -124,6 +124,12 @@ export const searchTools: ToolDefinition<never>[] = [
         max_depth?: number;
       }) => {
         const problem = getProblem(args.problem_id);
+        if (problem.type === 'python_problem') {
+          return JSON.stringify({
+            error: true,
+            message: 'This problem was authored as Python code -- use search_run_algorithm_on_python_problem instead.',
+          });
+        }
         const trace = await runSearchAlgorithm(problem, args.algorithm, {
           heuristic: args.heuristic,
           random_restart: args.random_restart,

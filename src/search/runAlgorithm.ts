@@ -28,7 +28,7 @@ function pyMazeLiteral(maze: number[][]): string {
   return JSON.stringify(maze); // valid Python list-of-lists literal syntax too
 }
 
-const ALGORITHM_MODULE: Record<SearchAlgorithm, string> = {
+export const ALGORITHM_MODULE: Record<SearchAlgorithm, string> = {
   a_star: 'a_star',
   best_first: 'best_first',
   branch_and_bound: 'branch_and_bound',
@@ -39,7 +39,7 @@ const ALGORITHM_MODULE: Record<SearchAlgorithm, string> = {
   uniform_cost: 'uniform_cost',
 };
 
-const ALGORITHM_FUNC: Record<SearchAlgorithm, string> = {
+export const ALGORITHM_FUNC: Record<SearchAlgorithm, string> = {
   a_star: 'a_star_search',
   best_first: 'best_first_search',
   branch_and_bound: 'branch_and_bound_search',
@@ -66,7 +66,7 @@ const HEURISTIC_METHOD: Record<string, string> = {
 // unbounded when max_depth is None (confirmed by reading the source — a bare
 // `while True: depth += 1` with recursion scaling with the reached depth).
 // This app must NEVER pass max_depth=None through. Always a finite, small cap.
-const DEFAULT_MAX_DEPTH = 40;
+export const DEFAULT_MAX_DEPTH = 40;
 const MAX_ALLOWED_MAX_DEPTH = 60;
 
 function buildProblemConstructionCode(problem: AuthoredProblem, varName: string): string {
@@ -112,7 +112,7 @@ function buildProblemConstructionCode(problem: AuthoredProblem, varName: string)
 //     ever found, which `json.dumps` will emit as the non-standard `Infinity`
 //     token — valid to Python's json module, but invalid JSON that would
 //     break JS's strict `JSON.parse` on the other side of the bridge.
-const PY_SUMMARY_HELPER = `
+export const PY_SUMMARY_HELPER = `
 def _polyraptor_sanitize(v):
     if isinstance(v, float) and (v != v or v in (float('inf'), float('-inf'))):
         return None

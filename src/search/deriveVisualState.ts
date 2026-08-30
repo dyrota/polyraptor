@@ -21,30 +21,37 @@ export function deriveSearchVisualState(entries: SearchTraceEntry[], currentSeq:
 
   for (let i = 0; i <= currentSeq && i < entries.length; i++) {
     const event = entries[i].event;
-    switch (event.type) {
-      case 'expand': {
-        const k = stateKey(event.state);
-        expanded.add(k);
-        frontier.delete(k);
-        currentState = event.state;
-        break;
+    // A custom algorithm's event might not match the shape below (e.g. no
+    // .state field) -- skip it rather than let one malformed event break
+    // the whole replay. Well-formed built-in events are unaffected.
+    try {
+      switch (event.type) {
+        case 'expand': {
+          const k = stateKey(event.state);
+          expanded.add(k);
+          frontier.delete(k);
+          currentState = event.state;
+          break;
+        }
+        case 'generate': {
+          const k = stateKey(event.to_state);
+          if (!expanded.has(k)) frontier.add(k);
+          break;
+        }
+        case 'reject': {
+          if (event.to_state !== undefined) rejected.add(stateKey(event.to_state));
+          break;
+        }
+        case 'goal':
+        case 'goal-candidate': {
+          currentState = event.state;
+          break;
+        }
+        default:
+          break;
       }
-      case 'generate': {
-        const k = stateKey(event.to_state);
-        if (!expanded.has(k)) frontier.add(k);
-        break;
-      }
-      case 'reject': {
-        if (event.to_state !== undefined) rejected.add(stateKey(event.to_state));
-        break;
-      }
-      case 'goal':
-      case 'goal-candidate': {
-        currentState = event.state;
-        break;
-      }
-      default:
-        break;
+    } catch (err) {
+      console.warn('polyraptor: skipping malformed search trace event', event, err);
     }
   }
 

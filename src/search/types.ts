@@ -79,7 +79,13 @@ export type SearchAlgorithm =
   | 'iterative_deepening'
   | 'uniform_cost';
 
-export type SearchProblemType = 'maze' | 'n_queens' | 'missionaries_and_cannibals';
+export type SearchProblemType = 'maze' | 'n_queens' | 'missionaries_and_cannibals' | 'python_problem';
+
+export interface PythonProblemPreview {
+  initial_state?: unknown;
+  operator_count?: number;
+  goal_check_on_initial?: boolean;
+}
 
 export interface AuthoredProblem {
   problem_id: string;
@@ -89,6 +95,11 @@ export interface AuthoredProblem {
   start?: MazeState;
   goal?: MazeState;
   n?: number;
+  // python_problem only: the state's shape is opaque to JS (all we ever have
+  // is the student's source string), so there's no structured spatial data
+  // to render the way maze/n_queens have -- see GenericTraceLog.
+  source_code?: string;
+  preview?: PythonProblemPreview;
 }
 
 export interface RunSummary {

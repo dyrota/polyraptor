@@ -1,12 +1,18 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { problemsStore, activeProblemIdStore, activeTraceIdStore, putProblem, putTrace, newProblemId } from './state';
 import { tracesStore } from '../shared/traceStore';
 import { generateMaze } from './mazeGenerator';
 import { runSearchAlgorithm } from './runAlgorithm';
+import { authorPythonSearchProblem, runAlgorithmOnPythonSearchProblem } from './runPythonProblem';
+import { forceStop } from '../pyodide/workerBridge';
 import { MazeCanvas } from './MazeCanvas';
 import { NQueensBoard } from './NQueensBoard';
 import { MissionariesView } from './MissionariesView';
 import { PlaybackBar } from '../playback/PlaybackBar';
+import { PythonEditor } from '../shared/PythonEditor';
+import { GenericTraceLog } from '../shared/GenericTraceLog';
+import { ErrorBoundary } from '../shared/ErrorBoundary';
+import { SEARCH_PROBLEM_TEMPLATE } from './pythonTemplates';
 import type { SearchAlgorithm, SearchTrace } from './types';
 
 const ALGORITHMS: SearchAlgorithm[] = [
@@ -32,6 +38,29 @@ export function SearchPanel() {
   const [algorithm, setAlgorithm] = useState<SearchAlgorithm>('a_star');
   const [heuristic, setHeuristic] = useState('manhattan_distance');
   const [running, setRunning] = useState(false);
+
+  // Mode toggle: local UI state only. It controls WHICH INPUT CONTROLS are
+  // shown -- it must never gate the result area below (canvas/log/playback/
+  // summary), which stays driven unconditionally by the real store state. If
+  // an agent authors and runs Python code while a human's toggle happens to
+  // sit on "Built-in", the human must still see it happen immediately.
+  const [mode, setMode] = useState<'builtin' | 'python'>('builtin');
+  const [pythonSource, setPythonSource] = useState(SEARCH_PROBLEM_TEMPLATE);
+  const [pythonAlgorithm, setPythonAlgorithm] = useState<SearchAlgorithm>('a_star');
+  const [pythonError, setPythonError] = useState<{ friendly_error: string; raw_traceback?: string } | null>(null);
+  const [showRawTraceback, setShowRawTraceback] = useState(false);
+  const [pythonRunning, setPythonRunning] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const runStartRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!pythonRunning) return;
+    runStartRef.current = performance.now();
+    const interval = setInterval(() => {
+      if (runStartRef.current !== null) setElapsedMs(performance.now() - runStartRef.current);
+    }, 100);
+    return () => clearInterval(interval);
+  }, [pythonRunning]);
 
   // Cast at the boundary: the shared trace store is family-agnostic (generic
   // `algorithm: string`/`summary: unknown`), search code needs its own
@@ -60,32 +89,121 @@ export function SearchPanel() {
     }
   }
 
+  // Human "Run" does validate-then-run as one click -- same two underlying
+  // calls the separate WebMCP tools perform, just sequenced smoother for a
+  // person than making them click twice.
+  async function handlePythonRun() {
+    setPythonError(null);
+    setPythonRunning(true);
+    setElapsedMs(0);
+    try {
+      const authored = await authorPythonSearchProblem(pythonSource);
+      if (!authored.valid) {
+        setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
+        return;
+      }
+      const problemId = newProblemId('search-py');
+      const problem = {
+        problem_id: problemId,
+        type: 'python_problem' as const,
+        source_code: pythonSource,
+        preview: {
+          initial_state: authored.initial_state,
+          operator_count: authored.operator_count,
+          goal_check_on_initial: authored.goal_check_on_initial,
+        },
+      };
+      putProblem(problem);
+      const result = await runAlgorithmOnPythonSearchProblem(problem, pythonAlgorithm);
+      if (!result.ok) {
+        setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
+        return;
+      }
+      putTrace(result.trace!);
+    } finally {
+      setPythonRunning(false);
+    }
+  }
+
+  function handleStop() {
+    forceStop();
+    setPythonRunning(false);
+  }
+
   return (
     <div className="search-panel">
-      <div className="search-controls">
-        <button onClick={handleNewMaze}>New Maze</button>
-        <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value as SearchAlgorithm)}>
-          {ALGORITHMS.map((a) => (
-            <option key={a} value={a}>{a}</option>
-          ))}
-        </select>
-        {activeProblem?.type === 'maze' && (
-          <select value={heuristic} onChange={(e) => setHeuristic(e.target.value)}>
-            <option value="">no heuristic</option>
-            <option value="manhattan_distance">manhattan_distance</option>
-            <option value="euclidean_distance">euclidean_distance</option>
-          </select>
-        )}
-        <button onClick={handleRun} disabled={!activeProblem || running}>
-          {running ? 'Running...' : 'Run'}
-        </button>
+      <div className="mode-toggle">
+        <button className={mode === 'builtin' ? 'active' : ''} onClick={() => setMode('builtin')}>Built-in</button>
+        <button className={mode === 'python' ? 'active' : ''} onClick={() => setMode('python')}>Write your own</button>
       </div>
 
-      {!activeProblem && <p className="search-empty">Click "New Maze", or ask your agent to author a problem (search_author_maze / search_author_n_queens / search_author_missionaries_and_cannibals).</p>}
+      {mode === 'builtin' && (
+        <div className="search-controls">
+          <button onClick={handleNewMaze}>New Maze</button>
+          <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value as SearchAlgorithm)}>
+            {ALGORITHMS.map((a) => (
+              <option key={a} value={a}>{a}</option>
+            ))}
+          </select>
+          {activeProblem?.type === 'maze' && (
+            <select value={heuristic} onChange={(e) => setHeuristic(e.target.value)}>
+              <option value="">no heuristic</option>
+              <option value="manhattan_distance">manhattan_distance</option>
+              <option value="euclidean_distance">euclidean_distance</option>
+            </select>
+          )}
+          <button onClick={handleRun} disabled={!activeProblem || running}>
+            {running ? 'Running...' : 'Run'}
+          </button>
+        </div>
+      )}
 
-      {activeProblem?.type === 'maze' && <MazeCanvas problem={activeProblem} trace={activeTrace} />}
-      {activeProblem?.type === 'n_queens' && <NQueensBoard problem={activeProblem} trace={activeTrace} />}
-      {activeProblem?.type === 'missionaries_and_cannibals' && <MissionariesView trace={activeTrace} />}
+      {mode === 'python' && (
+        <div className="python-authoring">
+          <PythonEditor value={pythonSource} onChange={setPythonSource} readOnly={pythonRunning} />
+          <div className="search-controls">
+            <select value={pythonAlgorithm} onChange={(e) => setPythonAlgorithm(e.target.value as SearchAlgorithm)}>
+              {ALGORITHMS.map((a) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
+            <button onClick={handlePythonRun} disabled={pythonRunning}>
+              {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run'}
+            </button>
+            {pythonRunning && <button onClick={handleStop}>Stop</button>}
+          </div>
+          {pythonError && (
+            <div className="python-error">
+              <div className="python-error-message">{pythonError.friendly_error}</div>
+              {pythonError.raw_traceback && (
+                <>
+                  <button className="python-error-toggle" onClick={() => setShowRawTraceback((s) => !s)}>
+                    {showRawTraceback ? 'Hide details' : 'Show details'}
+                  </button>
+                  {showRawTraceback && <pre className="python-error-traceback">{pythonError.raw_traceback}</pre>}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!activeProblem && (
+        <p className="search-empty">
+          Click "New Maze" or write your own Problem class, or ask your agent to author one (search_author_maze /
+          search_author_n_queens / search_author_missionaries_and_cannibals / search_author_python_problem).
+        </p>
+      )}
+
+      <ErrorBoundary>
+        {activeProblem?.type === 'maze' && <MazeCanvas problem={activeProblem} trace={activeTrace} />}
+        {activeProblem?.type === 'n_queens' && <NQueensBoard problem={activeProblem} trace={activeTrace} />}
+        {activeProblem?.type === 'missionaries_and_cannibals' && <MissionariesView trace={activeTrace} />}
+        {activeProblem?.type === 'python_problem' && activeTrace && <GenericTraceLog traceId={activeTrace.trace_id} />}
+        {activeProblem?.type === 'python_problem' && !activeTrace && (
+          <p className="search-empty">Problem authored -- run an algorithm against it to see a trace.</p>
+        )}
+      </ErrorBoundary>
 
       {activeTrace && (
         <>

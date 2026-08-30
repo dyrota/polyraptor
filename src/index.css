@@ -140,6 +140,35 @@ body {
 .maze-legend { display: flex; gap: 1rem; margin-top: 0.5rem; font-size: 0.8rem; color: #555; }
 .maze-legend .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border-radius: 2px; }
 
+.generic-trace-log {
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  max-height: 360px;
+  overflow-y: auto;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  background: #fafafa;
+}
+.generic-trace-empty { padding: 1rem; color: #888; }
+.generic-trace-entry {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.3rem 0.6rem;
+  border-bottom: 1px solid #eee;
+}
+.generic-trace-entry.current { background: #fff3cd; }
+.generic-trace-seq { color: #888; min-width: 2.5rem; text-align: right; }
+.generic-trace-type { color: #1565c0; font-weight: 600; min-width: 6rem; }
+.generic-trace-rest { color: #333; word-break: break-all; }
+
+.error-boundary-fallback {
+  padding: 1rem;
+  color: #611a15;
+  background: #fdecea;
+  border: 1px solid #f5c2c0;
+  border-radius: 6px;
+}
+
 .playback-bar {
   display: flex;
   align-items: center;
