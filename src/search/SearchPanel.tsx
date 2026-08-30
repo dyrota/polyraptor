@@ -1,12 +1,13 @@
 import { useState, useSyncExternalStore } from 'react';
-import { problemsStore, tracesStore, activeProblemIdStore, activeTraceIdStore, putProblem, putTrace, newProblemId } from './state';
+import { problemsStore, activeProblemIdStore, activeTraceIdStore, putProblem, putTrace, newProblemId } from './state';
+import { tracesStore } from '../shared/traceStore';
 import { generateMaze } from './mazeGenerator';
 import { runSearchAlgorithm } from './runAlgorithm';
 import { MazeCanvas } from './MazeCanvas';
 import { NQueensBoard } from './NQueensBoard';
 import { MissionariesView } from './MissionariesView';
 import { PlaybackBar } from '../playback/PlaybackBar';
-import type { SearchAlgorithm } from './types';
+import type { SearchAlgorithm, SearchTrace } from './types';
 
 const ALGORITHMS: SearchAlgorithm[] = [
   'a_star',
@@ -32,8 +33,14 @@ export function SearchPanel() {
   const [heuristic, setHeuristic] = useState('manhattan_distance');
   const [running, setRunning] = useState(false);
 
-  const activeProblem = activeProblemId ? problems[activeProblemId] : null;
-  const activeTrace = activeTraceId ? traces[activeTraceId] : null;
+  // Cast at the boundary: the shared trace store is family-agnostic (generic
+  // `algorithm: string`/`summary: unknown`), search code needs its own
+  // concrete SearchTrace shape from here on — same "unknown at the boundary,
+  // narrow immediately" principle already used for the Pyodide boundary.
+  const activeTrace = (activeTraceId ? traces[activeTraceId] : null) as SearchTrace | null;
+  // Always show the problem the active trace actually ran on, not just
+  // whatever was last authored — same reasoning as sort/SortPanel.tsx.
+  const activeProblem = activeTrace ? problems[activeTrace.problem_id] : activeProblemId ? problems[activeProblemId] : null;
 
   async function handleNewMaze() {
     const generated = generateMaze({ rows: 12, cols: 16, wallDensity: 0.3 });
