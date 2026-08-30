@@ -3,6 +3,7 @@ import { initWebMcp } from './webmcp';
 import { getPyodide } from './pyodide/bridge';
 import { SearchPanel } from './search/SearchPanel';
 import { SortPanel } from './sort/SortPanel';
+import { EvolvePanel } from './evolve/EvolvePanel';
 import { ToolCallLog } from './shared/ToolCallLog';
 
 type Tab = 'search' | 'sort' | 'evolve';
@@ -42,7 +43,7 @@ export default function App() {
         <div className="app-content">
           {tab === 'search' && <SearchPanel />}
           {tab === 'sort' && <SortPanel />}
-          {tab === 'evolve' && <div className="coming-soon">Evolve family — coming next.</div>}
+          {tab === 'evolve' && <EvolvePanel />}
         </div>
         <aside className="app-sidebar">
           <ToolCallLog />
