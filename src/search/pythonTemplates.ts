@@ -62,3 +62,10 @@ export const SEARCH_ALGORITHM_TEMPLATE = `def algorithm(problem, on_step=None):
 
     return None
 `;
+
+export const SEARCH_HEURISTIC_TEMPLATE = `def heuristic(state):
+    # Return a number estimating the remaining cost from this state to the
+    # goal. Called against whichever problem is currently active -- if it's
+    # a maze, \`state\` is a (row, col) tuple.
+    return 0
+`;

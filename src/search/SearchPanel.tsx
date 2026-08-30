@@ -5,6 +5,7 @@ import { generateMaze } from './mazeGenerator';
 import { runSearchAlgorithm } from './runAlgorithm';
 import { authorPythonSearchProblem, runAlgorithmOnPythonSearchProblem } from './runPythonProblem';
 import { authorPythonSearchAlgorithm, runPythonAlgorithmOnProblem } from './runPythonAlgorithm';
+import { authorPythonSearchHeuristic, runPythonHeuristicOnProblem } from './runPythonHeuristic';
 import { forceStop } from '../pyodide/workerBridge';
 import { MazeCanvas } from './MazeCanvas';
 import { NQueensBoard } from './NQueensBoard';
@@ -13,7 +14,7 @@ import { PlaybackBar } from '../playback/PlaybackBar';
 import { PythonEditor } from '../shared/PythonEditor';
 import { GenericTraceLog } from '../shared/GenericTraceLog';
 import { ErrorBoundary } from '../shared/ErrorBoundary';
-import { SEARCH_PROBLEM_TEMPLATE, SEARCH_ALGORITHM_TEMPLATE } from './pythonTemplates';
+import { SEARCH_PROBLEM_TEMPLATE, SEARCH_ALGORITHM_TEMPLATE, SEARCH_HEURISTIC_TEMPLATE } from './pythonTemplates';
 import type { SearchAlgorithm, SearchTrace } from './types';
 
 const ALGORITHMS: SearchAlgorithm[] = [
@@ -26,6 +27,10 @@ const ALGORITHMS: SearchAlgorithm[] = [
   'iterative_deepening',
   'uniform_cost',
 ];
+
+// Only these three built-in algorithms accept a heuristic at all -- a custom
+// heuristic is meaningless against breadth_first/depth_first/etc.
+const HEURISTIC_ALGORITHMS: Array<'a_star' | 'best_first' | 'hill_climbing'> = ['a_star', 'best_first', 'hill_climbing'];
 
 // This panel is deliberately usable by a human directly (New Maze / Run
 // buttons) AND by an agent via the search_*/playback_* WebMCP tools, both
@@ -50,10 +55,12 @@ export function SearchPanel() {
   // Algorithm to run against whatever problem is currently active (built-in
   // or custom) -- reuses the existing activeProblem rather than adding a
   // separate problem-picker UI.
-  const [pythonSubMode, setPythonSubMode] = useState<'problem' | 'algorithm'>('problem');
+  const [pythonSubMode, setPythonSubMode] = useState<'problem' | 'algorithm' | 'heuristic'>('problem');
   const [pythonSource, setPythonSource] = useState(SEARCH_PROBLEM_TEMPLATE);
   const [pythonAlgorithm, setPythonAlgorithm] = useState<SearchAlgorithm>('a_star');
   const [pythonAlgorithmSource, setPythonAlgorithmSource] = useState(SEARCH_ALGORITHM_TEMPLATE);
+  const [pythonHeuristicSource, setPythonHeuristicSource] = useState(SEARCH_HEURISTIC_TEMPLATE);
+  const [pythonHeuristicAlgorithm, setPythonHeuristicAlgorithm] = useState<'a_star' | 'best_first' | 'hill_climbing'>('a_star');
   const [pythonError, setPythonError] = useState<{ friendly_error: string; raw_traceback?: string } | null>(null);
   const [showRawTraceback, setShowRawTraceback] = useState(false);
   const [pythonRunning, setPythonRunning] = useState(false);
@@ -158,6 +165,32 @@ export function SearchPanel() {
     }
   }
 
+  // Narrowest-risk slot: only the heuristic is untrusted, called from inside
+  // a fully trusted a_star/best_first/hill_climbing loop -- validated against
+  // whatever problem is currently active (built-in or custom), same
+  // "reuse activeProblem, no separate picker" pattern as handlePythonAlgorithmRun.
+  async function handlePythonHeuristicRun() {
+    if (!activeProblem) return;
+    setPythonError(null);
+    setPythonRunning(true);
+    setElapsedMs(0);
+    try {
+      const authored = await authorPythonSearchHeuristic(pythonHeuristicSource, activeProblem);
+      if (!authored.valid) {
+        setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
+        return;
+      }
+      const result = await runPythonHeuristicOnProblem(activeProblem, pythonHeuristicSource, pythonHeuristicAlgorithm);
+      if (!result.ok) {
+        setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
+        return;
+      }
+      putTrace(result.trace!);
+    } finally {
+      setPythonRunning(false);
+    }
+  }
+
   function handleStop() {
     forceStop();
     setPythonRunning(false);
@@ -196,6 +229,7 @@ export function SearchPanel() {
           <div className="mode-toggle sub-toggle">
             <button className={pythonSubMode === 'problem' ? 'active' : ''} onClick={() => setPythonSubMode('problem')}>Problem</button>
             <button className={pythonSubMode === 'algorithm' ? 'active' : ''} onClick={() => setPythonSubMode('algorithm')}>Algorithm</button>
+            <button className={pythonSubMode === 'heuristic' ? 'active' : ''} onClick={() => setPythonSubMode('heuristic')}>Heuristic</button>
           </div>
 
           {pythonSubMode === 'problem' && (
@@ -220,6 +254,27 @@ export function SearchPanel() {
               <PythonEditor value={pythonAlgorithmSource} onChange={setPythonAlgorithmSource} readOnly={pythonRunning} />
               <div className="search-controls">
                 <button onClick={handlePythonAlgorithmRun} disabled={pythonRunning || !activeProblem}>
+                  {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run against active problem'}
+                </button>
+                {pythonRunning && <button onClick={handleStop}>Stop</button>}
+                {!activeProblem && <span className="search-empty">Author or select a problem first (Built-in or Problem sub-tab).</span>}
+              </div>
+            </>
+          )}
+
+          {pythonSubMode === 'heuristic' && (
+            <>
+              <PythonEditor value={pythonHeuristicSource} onChange={setPythonHeuristicSource} readOnly={pythonRunning} />
+              <div className="search-controls">
+                <select
+                  value={pythonHeuristicAlgorithm}
+                  onChange={(e) => setPythonHeuristicAlgorithm(e.target.value as 'a_star' | 'best_first' | 'hill_climbing')}
+                >
+                  {HEURISTIC_ALGORITHMS.map((a) => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+                <button onClick={handlePythonHeuristicRun} disabled={pythonRunning || !activeProblem}>
                   {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run against active problem'}
                 </button>
                 {pythonRunning && <button onClick={handleStop}>Stop</button>}

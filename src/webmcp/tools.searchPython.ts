@@ -2,8 +2,11 @@ import type { ToolDefinition } from './registerTool';
 import { logged } from '../shared/toolCallLog';
 import { authorPythonSearchProblem, runAlgorithmOnPythonSearchProblem } from '../search/runPythonProblem';
 import { authorPythonSearchAlgorithm, runPythonAlgorithmOnProblem } from '../search/runPythonAlgorithm';
+import { authorPythonSearchHeuristic, runPythonHeuristicOnProblem } from '../search/runPythonHeuristic';
 import { putProblem, putTrace, getProblem, newProblemId, putAlgorithm, getAlgorithm, newAlgorithmId } from '../search/state';
 import type { SearchAlgorithm } from '../search/types';
+
+const HEURISTIC_ALGORITHMS = ['a_star', 'best_first', 'hill_climbing'] as const;
 
 const SEARCH_ALGORITHMS = [
   'a_star',
@@ -175,6 +178,82 @@ export const searchPythonTools: ToolDefinition<never>[] = [
             raw_traceback: result.raw_traceback,
             trace_id: result.trace?.trace_id,
             trace_length: result.trace?.entries.length,
+          });
+        }
+        putTrace(result.trace!);
+        return JSON.stringify({
+          ok: true,
+          trace_id: result.trace!.trace_id,
+          trace_length: result.trace!.entries.length,
+          summary: result.trace!.summary,
+        });
+      }
+    ),
+  },
+  {
+    name: 'search_author_python_heuristic',
+    description:
+      'Define a custom heuristic as real Python code -- the narrowest, lowest-risk custom-code slot in this ' +
+      'app, since only a single pure function is untrusted, called from inside a fully trusted a_star/' +
+      'best_first/hill_climbing loop. Your source must define a function named exactly `heuristic(state)` ' +
+      'returning a number. Validated against problem_id\'s actual initial_state (built-in or custom problem) -- ' +
+      'returns a heuristic_id usable by search_run_python_heuristic.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        source_code: { type: 'string', description: 'Full Python source defining the `heuristic` function.' },
+        problem_id: { type: 'string', description: 'Problem to validate the heuristic against.' },
+      },
+      required: ['source_code', 'problem_id'],
+    },
+    execute: logged(
+      'search_author_python_heuristic',
+      async (args: { source_code: string; problem_id: string }) => {
+        const problem = getProblem(args.problem_id);
+        const result = await authorPythonSearchHeuristic(args.source_code, problem);
+        if (!result.valid) {
+          return JSON.stringify({
+            valid: false,
+            kind: result.kind,
+            friendly_error: result.friendly_error,
+            raw_traceback: result.raw_traceback,
+          });
+        }
+        const heuristicId = newAlgorithmId('search-heuristic-py');
+        putAlgorithm(heuristicId, args.source_code);
+        return JSON.stringify({ heuristic_id: heuristicId, valid: true, sample_value: result.sample_value });
+      }
+    ),
+  },
+  {
+    name: 'search_run_python_heuristic',
+    description:
+      'Run a_star/best_first/hill_climbing with a custom heuristic (from search_author_python_heuristic) ' +
+      'against any problem_id -- built-in or custom. Since only the heuristic is untrusted and the algorithm ' +
+      'loop is fully known, the summary is the same full, rich shape as search_run_algorithm (path_found, cost, ' +
+      'inferences, etc.), unlike search_run_python_algorithm\'s looser shape. Returns a trace_id usable by the ' +
+      'playback_* tools.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        problem_id: { type: 'string' },
+        heuristic_id: { type: 'string', description: 'From search_author_python_heuristic.' },
+        algorithm: { type: 'string', enum: HEURISTIC_ALGORITHMS as unknown as string[], description: 'Default a_star.' },
+      },
+      required: ['problem_id', 'heuristic_id'],
+    },
+    execute: logged(
+      'search_run_python_heuristic',
+      async (args: { problem_id: string; heuristic_id: string; algorithm?: 'a_star' | 'best_first' | 'hill_climbing' }) => {
+        const problem = getProblem(args.problem_id);
+        const heuristic = getAlgorithm(args.heuristic_id);
+        const result = await runPythonHeuristicOnProblem(problem, heuristic.source_code, args.algorithm ?? 'a_star');
+        if (!result.ok) {
+          return JSON.stringify({
+            ok: false,
+            kind: result.kind,
+            friendly_error: result.friendly_error,
+            raw_traceback: result.raw_traceback,
           });
         }
         putTrace(result.trace!);
