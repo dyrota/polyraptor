@@ -11,6 +11,8 @@
 // JS side always JSON.parse()s a plain string. Do not "fix" this by trying
 // PyProxy conversion again.
 
+import { PYODIDE_CDN_SCRIPT_URL, wheelUrl } from './config';
+
 declare global {
   interface Window {
     loadPyodide: (config?: { indexURL?: string }) => Promise<PyodideInterface>;
@@ -26,8 +28,6 @@ export interface PyodideInterface {
   runPython: (code: string) => unknown;
   runPythonAsync: (code: string) => Promise<unknown>;
 }
-
-const PYODIDE_CDN_SCRIPT = 'https://cdn.jsdelivr.net/pyodide/v314.0.6/full/pyodide.js';
 
 let pyodideSingleton: Promise<PyodideInterface> | null = null;
 
@@ -55,18 +55,17 @@ export async function getPyodide(
 
   pyodideSingleton = (async () => {
     onProgress?.('Loading Pyodide runtime...');
-    await loadScript(PYODIDE_CDN_SCRIPT);
+    await loadScript(PYODIDE_CDN_SCRIPT_URL);
     const pyodide = await window.loadPyodide();
 
     onProgress?.('Loading micropip...');
     await pyodide.loadPackage('micropip');
     const micropip = pyodide.pyimport('micropip');
 
-    const origin = window.location.origin;
     onProgress?.('Installing polysearch...');
-    await micropip.install(`${origin}/wheels/polysearch-0.1.0-py3-none-any.whl`);
+    await micropip.install(wheelUrl('polysearch'));
     onProgress?.('Installing polysort...');
-    await micropip.install(`${origin}/wheels/polysort-0.1.0-py3-none-any.whl`);
+    await micropip.install(wheelUrl('polysort'));
 
     onProgress?.('Ready.');
     return pyodide;
