@@ -4,11 +4,12 @@ import { tracesStore } from '../shared/traceStore';
 import { authorSortDataset, runSortAlgorithm } from './runAlgorithm';
 import { authorPythonSortProblem, runAlgorithmOnPythonSortProblem } from './runPythonProblem';
 import { authorPythonSortAlgorithm, runPythonAlgorithmOnProblem } from './runPythonAlgorithm';
+import { authorPythonSortComparator } from './runPythonComparator';
 import { forceStop } from '../pyodide/workerBridge';
 import { BarArrayCanvas } from './BarArrayCanvas';
 import { PlaybackBar } from '../playback/PlaybackBar';
 import { PythonEditor } from '../shared/PythonEditor';
-import { SORT_PROBLEM_TEMPLATE, SORT_ALGORITHM_TEMPLATE } from './pythonTemplates';
+import { SORT_PROBLEM_TEMPLATE, SORT_ALGORITHM_TEMPLATE, SORT_COMPARATOR_TEMPLATE } from './pythonTemplates';
 import type { SortAlgorithm, SortDatasetType, SortTrace } from './types';
 
 const ALGORITHMS: SortAlgorithm[] = [
@@ -46,9 +47,11 @@ export function SortPanel() {
   const [mode, setMode] = useState<'builtin' | 'python'>('builtin');
   // Sub-mode within "write your own": author a Problem, or author an
   // Algorithm to run against whatever problem is currently active.
-  const [pythonSubMode, setPythonSubMode] = useState<'problem' | 'algorithm'>('problem');
+  const [pythonSubMode, setPythonSubMode] = useState<'problem' | 'algorithm' | 'comparator'>('problem');
   const [pythonSource, setPythonSource] = useState(SORT_PROBLEM_TEMPLATE);
   const [pythonAlgorithmSource, setPythonAlgorithmSource] = useState(SORT_ALGORITHM_TEMPLATE);
+  const [pythonComparatorValuesText, setPythonComparatorValuesText] = useState('5, 3, 8, 1, 9, 2');
+  const [pythonComparatorSource, setPythonComparatorSource] = useState(SORT_COMPARATOR_TEMPLATE);
   const [pythonError, setPythonError] = useState<{ friendly_error: string; raw_traceback?: string } | null>(null);
   const [showRawTraceback, setShowRawTraceback] = useState(false);
   const [pythonRunning, setPythonRunning] = useState(false);
@@ -144,6 +147,46 @@ export function SortPanel() {
     }
   }
 
+  // Lowest-risk on-ramp: no Problem class at all, just a trusted literal
+  // values array + a single comparator(a, b) function. Delegates entirely to
+  // authorPythonSortComparator, which wraps both into a synthetic Problem
+  // source and validates it the exact same way as a full custom problem --
+  // the result is a normal python_problem, run the same way handlePythonRun
+  // runs one.
+  async function handlePythonComparatorRun() {
+    setPythonError(null);
+    setPythonRunning(true);
+    setElapsedMs(0);
+    try {
+      const values = pythonComparatorValuesText
+        .split(',')
+        .map((s) => Number(s.trim()))
+        .filter((n) => !Number.isNaN(n));
+      const authored = await authorPythonSortComparator(values, pythonComparatorSource);
+      if (!authored.valid) {
+        setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
+        return;
+      }
+      const problemId = newProblemId('sort-cmp-py');
+      const problem = {
+        problem_id: problemId,
+        dataset_type: 'python_problem' as const,
+        size: authored.size!,
+        values: authored.values!,
+        source_code: authored.synthetic_source!,
+      };
+      putProblem(problem);
+      const result = await runAlgorithmOnPythonSortProblem(problem, algorithm);
+      if (!result.ok) {
+        setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
+        return;
+      }
+      putTrace(result.trace!);
+    } finally {
+      setPythonRunning(false);
+    }
+  }
+
   function handleStop() {
     forceStop();
     setPythonRunning(false);
@@ -188,6 +231,7 @@ export function SortPanel() {
           <div className="mode-toggle sub-toggle">
             <button className={pythonSubMode === 'problem' ? 'active' : ''} onClick={() => setPythonSubMode('problem')}>Problem</button>
             <button className={pythonSubMode === 'algorithm' ? 'active' : ''} onClick={() => setPythonSubMode('algorithm')}>Algorithm</button>
+            <button className={pythonSubMode === 'comparator' ? 'active' : ''} onClick={() => setPythonSubMode('comparator')}>Comparator</button>
           </div>
 
           {pythonSubMode === 'problem' && (
@@ -216,6 +260,34 @@ export function SortPanel() {
                 </button>
                 {pythonRunning && <button onClick={handleStop}>Stop</button>}
                 {!activeProblem && <span className="search-empty">Author or select a problem first.</span>}
+              </div>
+            </>
+          )}
+
+          {pythonSubMode === 'comparator' && (
+            <>
+              <div className="search-controls">
+                <label>
+                  Values (comma-separated):{' '}
+                  <input
+                    type="text"
+                    value={pythonComparatorValuesText}
+                    onChange={(e) => setPythonComparatorValuesText(e.target.value)}
+                    style={{ width: '16rem' }}
+                  />
+                </label>
+              </div>
+              <PythonEditor value={pythonComparatorSource} onChange={setPythonComparatorSource} readOnly={pythonRunning} />
+              <div className="search-controls">
+                <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value as SortAlgorithm)}>
+                  {ALGORITHMS.map((a) => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+                <button onClick={handlePythonComparatorRun} disabled={pythonRunning}>
+                  {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run'}
+                </button>
+                {pythonRunning && <button onClick={handleStop}>Stop</button>}
               </div>
             </>
           )}

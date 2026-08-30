@@ -36,3 +36,15 @@ export const SORT_ALGORITHM_TEMPLATE = `def algorithm(problem, on_step=None):
                     on_step({'type': 'swap', 'a': {'buffer': 'main', 'index': j}, 'b': {'buffer': 'main', 'index': j + 1}})
     return data
 `;
+
+export const SORT_COMPARATOR_TEMPLATE = `def comparator(a, b):
+    # Return -1 if a should come before b, 1 if after, 0 if equal.
+    # This runs against a fixed list of numbers you provide below --
+    # no Problem class needed, just this one function.
+    if a < b:
+        return -1
+    if a > b:
+        return 1
+    return 0
+`;
+

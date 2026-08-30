@@ -2,6 +2,7 @@ import type { ToolDefinition } from './registerTool';
 import { logged } from '../shared/toolCallLog';
 import { authorPythonSortProblem, runAlgorithmOnPythonSortProblem } from '../sort/runPythonProblem';
 import { authorPythonSortAlgorithm, runPythonAlgorithmOnProblem } from '../sort/runPythonAlgorithm';
+import { authorPythonSortComparator } from '../sort/runPythonComparator';
 import { putProblem, putTrace, getProblem, newProblemId, putAlgorithm, getAlgorithm, newAlgorithmId } from '../sort/state';
 import type { SortAlgorithm } from '../sort/types';
 
@@ -173,6 +174,46 @@ export const sortPythonTools: ToolDefinition<never>[] = [
           trace_length: result.trace!.entries.length,
           summary: result.trace!.summary,
         });
+      }
+    ),
+  },
+  {
+    name: 'sort_author_python_comparator',
+    description:
+      'Lower-risk on-ramp to custom sort code: supply a literal list of numbers plus only a comparator(a, b) ' +
+      'function (not a full Problem class) -- good for a "write just the comparison logic" assignment. Returns ' +
+      'a problem_id usable by sort_run_algorithm_on_python_problem exactly like a full ' +
+      'sort_author_python_problem result -- there is no separate run tool for this, it flows through the same ' +
+      'path as any other custom problem.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        values: { type: 'array', items: { type: 'number' }, minItems: 1, maxItems: 300 },
+        source_code: { type: 'string', description: 'Full Python source defining the `comparator` function.' },
+      },
+      required: ['values', 'source_code'],
+    },
+    execute: logged(
+      'sort_author_python_comparator',
+      async (args: { values: number[]; source_code: string }) => {
+        const result = await authorPythonSortComparator(args.values, args.source_code);
+        if (!result.valid) {
+          return JSON.stringify({
+            valid: false,
+            kind: result.kind,
+            friendly_error: result.friendly_error,
+            raw_traceback: result.raw_traceback,
+          });
+        }
+        const problemId = newProblemId('sort-cmp-py');
+        putProblem({
+          problem_id: problemId,
+          dataset_type: 'python_problem',
+          size: result.size!,
+          values: result.values!,
+          source_code: result.synthetic_source!,
+        });
+        return JSON.stringify({ problem_id: problemId, valid: true, size: result.size, values: result.values });
       }
     ),
   },
