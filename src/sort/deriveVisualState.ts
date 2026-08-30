@@ -38,8 +38,16 @@ export function deriveSortVisualState(
     highlighted = {};
     switch (event.type) {
       case 'compare': {
+        // merge/tim's compare events tag 'left'/'right' (ephemeral sub-lists,
+        // not main-array positions) and carry the value directly — without
+        // this branch, those comparisons were invisible: every write during
+        // a merge targets 'main' (the copy-back), so the aux strip mechanism
+        // that already works for counting/radix's write-based buffers never
+        // fired for merge/tim at all, even mid-merge.
         if (event.a.buffer === 'main') highlighted[event.a.index] = 'compare';
+        else if (event.a.value !== undefined) auxiliary[event.a.buffer] = { ...(auxiliary[event.a.buffer] ?? {}), [event.a.index]: event.a.value };
         if (event.b.buffer === 'main') highlighted[event.b.index] = 'compare';
+        else if (event.b.value !== undefined) auxiliary[event.b.buffer] = { ...(auxiliary[event.b.buffer] ?? {}), [event.b.index]: event.b.value };
         break;
       }
       case 'swap': {
