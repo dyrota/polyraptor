@@ -3,10 +3,9 @@ import { initWebMcp } from './webmcp';
 import { getPyodide } from './pyodide/bridge';
 import { SearchPanel } from './search/SearchPanel';
 import { SortPanel } from './sort/SortPanel';
-import { EvolvePanel } from './evolve/EvolvePanel';
 import { ToolCallLog } from './shared/ToolCallLog';
 
-type Tab = 'search' | 'sort' | 'evolve';
+type Tab = 'search' | 'sort';
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('search');
@@ -36,14 +35,12 @@ export default function App() {
       <nav className="app-tabs">
         <button className={tab === 'search' ? 'active' : ''} onClick={() => setTab('search')}>Search</button>
         <button className={tab === 'sort' ? 'active' : ''} onClick={() => setTab('sort')}>Sort</button>
-        <button className={tab === 'evolve' ? 'active' : ''} onClick={() => setTab('evolve')}>Evolve</button>
       </nav>
 
       <main className="app-main">
         <div className="app-content">
           {tab === 'search' && <SearchPanel />}
           {tab === 'sort' && <SortPanel />}
-          {tab === 'evolve' && <EvolvePanel />}
         </div>
         <aside className="app-sidebar">
           <ToolCallLog />
