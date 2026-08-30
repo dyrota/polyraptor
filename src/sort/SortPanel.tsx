@@ -9,6 +9,8 @@ import { forceStop } from '../pyodide/workerBridge';
 import { BarArrayCanvas } from './BarArrayCanvas';
 import { PlaybackBar } from '../playback/PlaybackBar';
 import { PythonEditor } from '../shared/PythonEditor';
+import { CopyShareLinkButton } from '../shared/CopyShareLinkButton';
+import type { SharedPayload } from '../shared/shareLink';
 import { SORT_PROBLEM_TEMPLATE, SORT_ALGORITHM_TEMPLATE, SORT_COMPARATOR_TEMPLATE } from './pythonTemplates';
 import type { SortAlgorithm, SortDatasetType, SortTrace } from './types';
 
@@ -27,9 +29,17 @@ const ALGORITHMS: SortAlgorithm[] = [
 
 const DATASETS: SortDatasetType[] = ['random_integers', 'nearly_sorted', 'reverse_sorted', 'many_duplicates'];
 
+function parseComparatorValues(text: string): number[] {
+  return text
+    .split(',')
+    .map((s) => Number(s.trim()))
+    .filter((n) => !Number.isNaN(n));
+}
+
 // Mirrors SearchPanel.tsx exactly — human buttons and the sort_* WebMCP tools
 // read/write the same store, same "shared live state" point as search.
-export function SortPanel() {
+export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | null }) {
+  const shared = sharedPayload?.kind.startsWith('sort-') ? sharedPayload : null;
   const problems = useSyncExternalStore(problemsStore.subscribe, problemsStore.getState);
   const traces = useSyncExternalStore(tracesStore.subscribe, tracesStore.getState);
   const activeProblemId = useSyncExternalStore(activeProblemIdStore.subscribe, activeProblemIdStore.getState);
@@ -44,14 +54,24 @@ export function SortPanel() {
   // summary), which stays driven unconditionally by the real store state. If
   // an agent authors and runs Python code while a human's toggle happens to
   // sit on "Built-in", the human must still see it happen immediately.
-  const [mode, setMode] = useState<'builtin' | 'python'>('builtin');
+  const [mode, setMode] = useState<'builtin' | 'python'>(() => (shared ? 'python' : 'builtin'));
   // Sub-mode within "write your own": author a Problem, or author an
   // Algorithm to run against whatever problem is currently active.
-  const [pythonSubMode, setPythonSubMode] = useState<'problem' | 'algorithm' | 'comparator'>('problem');
-  const [pythonSource, setPythonSource] = useState(SORT_PROBLEM_TEMPLATE);
-  const [pythonAlgorithmSource, setPythonAlgorithmSource] = useState(SORT_ALGORITHM_TEMPLATE);
-  const [pythonComparatorValuesText, setPythonComparatorValuesText] = useState('5, 3, 8, 1, 9, 2');
-  const [pythonComparatorSource, setPythonComparatorSource] = useState(SORT_COMPARATOR_TEMPLATE);
+  const [pythonSubMode, setPythonSubMode] = useState<'problem' | 'algorithm' | 'comparator'>(() => {
+    if (shared?.kind === 'sort-algorithm') return 'algorithm';
+    if (shared?.kind === 'sort-comparator') return 'comparator';
+    return 'problem';
+  });
+  const [pythonSource, setPythonSource] = useState(() => (shared?.kind === 'sort-problem' ? shared.source : SORT_PROBLEM_TEMPLATE));
+  const [pythonAlgorithmSource, setPythonAlgorithmSource] = useState(() =>
+    shared?.kind === 'sort-algorithm' ? shared.source : SORT_ALGORITHM_TEMPLATE
+  );
+  const [pythonComparatorValuesText, setPythonComparatorValuesText] = useState(() =>
+    shared?.kind === 'sort-comparator' && shared.values ? shared.values.join(', ') : '5, 3, 8, 1, 9, 2'
+  );
+  const [pythonComparatorSource, setPythonComparatorSource] = useState(() =>
+    shared?.kind === 'sort-comparator' ? shared.source : SORT_COMPARATOR_TEMPLATE
+  );
   const [pythonError, setPythonError] = useState<{ friendly_error: string; raw_traceback?: string } | null>(null);
   const [showRawTraceback, setShowRawTraceback] = useState(false);
   const [pythonRunning, setPythonRunning] = useState(false);
@@ -158,10 +178,7 @@ export function SortPanel() {
     setPythonRunning(true);
     setElapsedMs(0);
     try {
-      const values = pythonComparatorValuesText
-        .split(',')
-        .map((s) => Number(s.trim()))
-        .filter((n) => !Number.isNaN(n));
+      const values = parseComparatorValues(pythonComparatorValuesText);
       const authored = await authorPythonSortComparator(values, pythonComparatorSource);
       if (!authored.valid) {
         setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
@@ -247,6 +264,7 @@ export function SortPanel() {
                   {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run'}
                 </button>
                 {pythonRunning && <button onClick={handleStop}>Stop</button>}
+                <CopyShareLinkButton payload={{ kind: 'sort-problem', source: pythonSource }} />
               </div>
             </>
           )}
@@ -259,6 +277,7 @@ export function SortPanel() {
                   {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run against active problem'}
                 </button>
                 {pythonRunning && <button onClick={handleStop}>Stop</button>}
+                <CopyShareLinkButton payload={{ kind: 'sort-algorithm', source: pythonAlgorithmSource }} />
                 {!activeProblem && <span className="search-empty">Author or select a problem first.</span>}
               </div>
             </>
@@ -288,6 +307,9 @@ export function SortPanel() {
                   {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run'}
                 </button>
                 {pythonRunning && <button onClick={handleStop}>Stop</button>}
+                <CopyShareLinkButton
+                  payload={{ kind: 'sort-comparator', source: pythonComparatorSource, values: parseComparatorValues(pythonComparatorValuesText) }}
+                />
               </div>
             </>
           )}

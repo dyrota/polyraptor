@@ -4,11 +4,17 @@ import { getPyodide } from './pyodide/bridge';
 import { SearchPanel } from './search/SearchPanel';
 import { SortPanel } from './sort/SortPanel';
 import { ToolCallLog } from './shared/ToolCallLog';
+import { decodeSharedFromLocation, SHARE_KIND_TAB } from './shared/shareLink';
 
 type Tab = 'search' | 'sort';
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>('search');
+  // Read once, at mount, and never again -- a shared link is a one-time
+  // "arrive here with this pre-populated" affordance, not a live prop. Both
+  // panels get the same object; each ignores it unless its kind belongs to
+  // that family.
+  const [sharedPayload] = useState(() => decodeSharedFromLocation());
+  const [tab, setTab] = useState<Tab>(() => (sharedPayload ? SHARE_KIND_TAB[sharedPayload.kind] : 'search'));
   const [webMcpStatus, setWebMcpStatus] = useState<{ available: boolean; toolCount: number } | null>(null);
   const [pyodideStatus, setPyodideStatus] = useState('Not loaded yet (loads on first algorithm run, or pre-warming now)...');
 
@@ -18,6 +24,18 @@ export default function App() {
     // eat a multi-second cold-start delay in the middle of a demo.
     getPyodide((msg) => setPyodideStatus(msg)).catch((err) => setPyodideStatus(`Failed to load Pyodide: ${err}`));
   }, []);
+
+  useEffect(() => {
+    // Strip `?shared=...` from the visible URL once consumed -- reloading
+    // shouldn't keep re-populating over a human's subsequent edits, and a
+    // later "Copy share link" click should produce a clean new URL rather
+    // than accumulating query params.
+    if (sharedPayload) {
+      const url = new URL(window.location.href);
+      url.search = '';
+      window.history.replaceState(null, '', url);
+    }
+  }, [sharedPayload]);
 
   return (
     <div className="app-shell">
@@ -39,8 +57,8 @@ export default function App() {
 
       <main className="app-main">
         <div className="app-content">
-          {tab === 'search' && <SearchPanel />}
-          {tab === 'sort' && <SortPanel />}
+          {tab === 'search' && <SearchPanel sharedPayload={sharedPayload} />}
+          {tab === 'sort' && <SortPanel sharedPayload={sharedPayload} />}
         </div>
         <aside className="app-sidebar">
           <ToolCallLog />

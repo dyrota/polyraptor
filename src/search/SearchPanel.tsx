@@ -14,6 +14,8 @@ import { PlaybackBar } from '../playback/PlaybackBar';
 import { PythonEditor } from '../shared/PythonEditor';
 import { GenericTraceLog } from '../shared/GenericTraceLog';
 import { ErrorBoundary } from '../shared/ErrorBoundary';
+import { CopyShareLinkButton } from '../shared/CopyShareLinkButton';
+import type { SharedPayload } from '../shared/shareLink';
 import { SEARCH_PROBLEM_TEMPLATE, SEARCH_ALGORITHM_TEMPLATE, SEARCH_HEURISTIC_TEMPLATE } from './pythonTemplates';
 import type { SearchAlgorithm, SearchTrace } from './types';
 
@@ -36,7 +38,8 @@ const HEURISTIC_ALGORITHMS: Array<'a_star' | 'best_first' | 'hill_climbing'> = [
 // buttons) AND by an agent via the search_*/playback_* WebMCP tools, both
 // reading and writing the exact same store -- that shared-live-state loop is
 // the point of the whole project, not just an agent-does-it-for-you demo.
-export function SearchPanel() {
+export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | null }) {
+  const shared = sharedPayload?.kind.startsWith('search-') ? sharedPayload : null;
   const problems = useSyncExternalStore(problemsStore.subscribe, problemsStore.getState);
   const traces = useSyncExternalStore(tracesStore.subscribe, tracesStore.getState);
   const activeProblemId = useSyncExternalStore(activeProblemIdStore.subscribe, activeProblemIdStore.getState);
@@ -50,16 +53,24 @@ export function SearchPanel() {
   // summary), which stays driven unconditionally by the real store state. If
   // an agent authors and runs Python code while a human's toggle happens to
   // sit on "Built-in", the human must still see it happen immediately.
-  const [mode, setMode] = useState<'builtin' | 'python'>('builtin');
+  const [mode, setMode] = useState<'builtin' | 'python'>(() => (shared ? 'python' : 'builtin'));
   // Sub-mode within "write your own": author a Problem, or author an
   // Algorithm to run against whatever problem is currently active (built-in
   // or custom) -- reuses the existing activeProblem rather than adding a
   // separate problem-picker UI.
-  const [pythonSubMode, setPythonSubMode] = useState<'problem' | 'algorithm' | 'heuristic'>('problem');
-  const [pythonSource, setPythonSource] = useState(SEARCH_PROBLEM_TEMPLATE);
+  const [pythonSubMode, setPythonSubMode] = useState<'problem' | 'algorithm' | 'heuristic'>(() => {
+    if (shared?.kind === 'search-algorithm') return 'algorithm';
+    if (shared?.kind === 'search-heuristic') return 'heuristic';
+    return 'problem';
+  });
+  const [pythonSource, setPythonSource] = useState(() => (shared?.kind === 'search-problem' ? shared.source : SEARCH_PROBLEM_TEMPLATE));
   const [pythonAlgorithm, setPythonAlgorithm] = useState<SearchAlgorithm>('a_star');
-  const [pythonAlgorithmSource, setPythonAlgorithmSource] = useState(SEARCH_ALGORITHM_TEMPLATE);
-  const [pythonHeuristicSource, setPythonHeuristicSource] = useState(SEARCH_HEURISTIC_TEMPLATE);
+  const [pythonAlgorithmSource, setPythonAlgorithmSource] = useState(() =>
+    shared?.kind === 'search-algorithm' ? shared.source : SEARCH_ALGORITHM_TEMPLATE
+  );
+  const [pythonHeuristicSource, setPythonHeuristicSource] = useState(() =>
+    shared?.kind === 'search-heuristic' ? shared.source : SEARCH_HEURISTIC_TEMPLATE
+  );
   const [pythonHeuristicAlgorithm, setPythonHeuristicAlgorithm] = useState<'a_star' | 'best_first' | 'hill_climbing'>('a_star');
   const [pythonError, setPythonError] = useState<{ friendly_error: string; raw_traceback?: string } | null>(null);
   const [showRawTraceback, setShowRawTraceback] = useState(false);
@@ -245,6 +256,7 @@ export function SearchPanel() {
                   {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run'}
                 </button>
                 {pythonRunning && <button onClick={handleStop}>Stop</button>}
+                <CopyShareLinkButton payload={{ kind: 'search-problem', source: pythonSource }} />
               </div>
             </>
           )}
@@ -257,6 +269,7 @@ export function SearchPanel() {
                   {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run against active problem'}
                 </button>
                 {pythonRunning && <button onClick={handleStop}>Stop</button>}
+                <CopyShareLinkButton payload={{ kind: 'search-algorithm', source: pythonAlgorithmSource }} />
                 {!activeProblem && <span className="search-empty">Author or select a problem first (Built-in or Problem sub-tab).</span>}
               </div>
             </>
@@ -278,6 +291,7 @@ export function SearchPanel() {
                   {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run against active problem'}
                 </button>
                 {pythonRunning && <button onClick={handleStop}>Stop</button>}
+                <CopyShareLinkButton payload={{ kind: 'search-heuristic', source: pythonHeuristicSource }} />
                 {!activeProblem && <span className="search-empty">Author or select a problem first (Built-in or Problem sub-tab).</span>}
               </div>
             </>
