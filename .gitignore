@@ -2,8 +2,8 @@ node_modules/
 dist/
 *.local
 .DS_Store
-phase0-check2/dummy_pkg/build/
-phase0-check2/dummy_pkg/*.egg-info/
+dev-notes/phase0-check2/dummy_pkg/build/
+dev-notes/phase0-check2/dummy_pkg/*.egg-info/
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
