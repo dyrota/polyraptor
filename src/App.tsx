@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { initWebMcp } from './webmcp';
 import { getPyodide } from './pyodide/bridge';
 import { SearchPanel } from './search/SearchPanel';
+import { SortPanel } from './sort/SortPanel';
 import { ToolCallLog } from './shared/ToolCallLog';
 
 type Tab = 'search' | 'sort' | 'evolve';
@@ -40,8 +41,8 @@ export default function App() {
       <main className="app-main">
         <div className="app-content">
           {tab === 'search' && <SearchPanel />}
-          {tab === 'sort' && <div className="coming-soon">Sort family — coming in Phase 3.</div>}
-          {tab === 'evolve' && <div className="coming-soon">Evolve family — coming in Phase 3.</div>}
+          {tab === 'sort' && <SortPanel />}
+          {tab === 'evolve' && <div className="coming-soon">Evolve family — coming next.</div>}
         </div>
         <aside className="app-sidebar">
           <ToolCallLog />

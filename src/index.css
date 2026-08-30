@@ -96,7 +96,7 @@ body {
 }
 .search-empty { color: #888; }
 
-.maze-canvas-wrapper canvas { border: 1px solid #ccc; border-radius: 4px; max-width: 100%; }
+.maze-canvas-wrapper canvas, .bar-canvas-wrapper canvas { border: 1px solid #ccc; border-radius: 4px; max-width: 100%; }
 .maze-legend { display: flex; gap: 1rem; margin-top: 0.5rem; font-size: 0.8rem; color: #555; }
 .maze-legend .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border-radius: 2px; }
 
