@@ -7,13 +7,13 @@ import type { AuthoredSortProblem, SortAlgorithm, SortRunSummary, SortTrace, Sor
 // generated Python source is either numerically validated or looked up
 // through a fixed allowlist — never an agent-supplied raw string.
 
-function pyInt(x: unknown, min: number, max: number): number {
+export function pyInt(x: unknown, min: number, max: number): number {
   const n = Math.floor(Number(x));
   if (!Number.isFinite(n)) throw new Error(`Expected a finite number, got: ${JSON.stringify(x)}`);
   return Math.max(min, Math.min(max, n));
 }
 
-function pyIntListLiteral(values: unknown): string {
+export function pyIntListLiteral(values: unknown): string {
   if (!Array.isArray(values) || values.length === 0 || !values.every((v) => Number.isFinite(Number(v)))) {
     throw new Error('Invalid values: expected a non-empty array of numbers.');
   }
@@ -21,7 +21,7 @@ function pyIntListLiteral(values: unknown): string {
   return JSON.stringify(ints); // valid Python list literal syntax too
 }
 
-const ALGORITHM_MODULE: Record<SortAlgorithm, string> = {
+export const ALGORITHM_MODULE: Record<SortAlgorithm, string> = {
   bubble_sort: 'bubble_sort',
   selection_sort: 'selection_sort',
   insertion_sort: 'insertion_sort',
@@ -37,14 +37,14 @@ const ALGORITHM_MODULE: Record<SortAlgorithm, string> = {
 // All 10 functions are named identically to their module (verified directly
 // against source, not assumed — unlike search where function names differ
 // from module names, e.g. a_star.py -> a_star_search).
-function algorithmFunctionName(algorithm: SortAlgorithm): string {
+export function algorithmFunctionName(algorithm: SortAlgorithm): string {
   return algorithm;
 }
 
 // Verified directly against source: all 10 algorithms uniformly return
 // (data, {comparisons, swaps, time}) when statistics=True — no None-shape or
 // inf-cost inconsistencies like search had. Simpler defensive helper needed.
-const PY_SORT_SUMMARY_HELPER = `
+export const PY_SORT_SUMMARY_HELPER = `
 def _polyraptor_sort_summary(data, stats):
     is_sorted = all(data[i] <= data[i + 1] for i in range(len(data) - 1))
     return {

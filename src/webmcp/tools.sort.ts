@@ -79,6 +79,12 @@ export const sortTools: ToolDefinition<never>[] = [
     },
     execute: logged('sort_run_algorithm', async (args: { problem_id: string; algorithm: SortAlgorithm }) => {
       const problem = getProblem(args.problem_id);
+      if (problem.dataset_type === 'python_problem') {
+        return JSON.stringify({
+          error: true,
+          message: 'This problem was authored as Python code — use sort_run_algorithm_on_python_problem instead.',
+        });
+      }
       const trace = await runSortAlgorithm(problem, args.algorithm);
       putTrace(trace);
       return JSON.stringify({ trace_id: trace.trace_id, trace_length: trace.entries.length, summary: trace.summary });

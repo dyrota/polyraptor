@@ -1,6 +1,7 @@
 import { registerTools, isWebMcpAvailable } from './registerTool';
 import { searchTools } from './tools.search';
 import { sortTools } from './tools.sort';
+import { sortPythonTools } from './tools.sortPython';
 import { playbackTools } from './tools.playback';
 
 // evolve_* tools removed for now -- returning once polyevolve exists as a
@@ -8,6 +9,6 @@ import { playbackTools } from './tools.playback';
 // Matter.js version this replaced).
 export function initWebMcp(): { available: boolean; toolCount: number } {
   const available = isWebMcpAvailable();
-  const { count } = registerTools([...searchTools, ...sortTools, ...playbackTools]);
+  const { count } = registerTools([...searchTools, ...sortTools, ...sortPythonTools, ...playbackTools]);
   return { available, toolCount: count };
 }

@@ -63,7 +63,7 @@ export type SortAlgorithm =
   | 'shell_sort'
   | 'tim_sort';
 
-export type SortDatasetType = 'random_integers' | 'nearly_sorted' | 'reverse_sorted' | 'many_duplicates' | 'custom';
+export type SortDatasetType = 'random_integers' | 'nearly_sorted' | 'reverse_sorted' | 'many_duplicates' | 'custom' | 'python_problem';
 
 export interface AuthoredSortProblem {
   problem_id: string;
@@ -72,11 +72,27 @@ export interface AuthoredSortProblem {
   // Always populated at author time (dataset generation happens once in
   // Python, values come back to JS) so the bar canvas has something to show
   // immediately, before any algorithm has run — mirrors search's
-  // problem.maze being always-available regardless of trace state.
+  // problem.maze being always-available regardless of trace state. For a
+  // python_problem, this is the values captured from the student's data()
+  // call during author-time validation — the bar canvas needs no changes
+  // to render it, since it only ever looks at this field regardless of
+  // dataset_type (see BarArrayCanvas.tsx).
   values: number[];
   seed?: number;
   swaps?: number;
   distinct?: number;
+  // Only set when dataset_type === 'python_problem'. The source is the
+  // stored artifact -- re-run means re-exec this from scratch, never a
+  // cached live Python object (see plan doc: "Author = construct +
+  // smoke-test + discard").
+  source_code?: string;
+}
+
+export interface PythonValidationError {
+  valid: false;
+  kind: string;
+  friendly_error: string;
+  raw_traceback: string;
 }
 
 export interface SortRunSummary {
