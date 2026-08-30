@@ -1,0 +1,12 @@
+{
+  // This is a plain static site (Vite build output in dist/), not a Worker
+  // script. Without this file, Cloudflare's deploy pipeline tries to
+  // auto-detect a framework-specific integration (its Vite plugin, which
+  // requires Vite 6+) instead of just serving the built files — explicit
+  // "assets.directory" skips that detection entirely.
+  "name": "polyraptor",
+  "compatibility_date": "2026-08-30",
+  "assets": {
+    "directory": "./dist"
+  }
+}
