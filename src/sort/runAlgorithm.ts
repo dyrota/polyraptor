@@ -45,8 +45,13 @@ export function algorithmFunctionName(algorithm: SortAlgorithm): string {
 // (data, {comparisons, swaps, time}) when statistics=True — no None-shape or
 // inf-cost inconsistencies like search had. Simpler defensive helper needed.
 export const PY_SORT_SUMMARY_HELPER = `
-def _polyraptor_sort_summary(data, stats):
-    is_sorted = all(data[i] <= data[i + 1] for i in range(len(data) - 1))
+def _polyraptor_sort_summary(problem, data, stats):
+    # Sortedness must be judged by the problem's OWN comparator, not a
+    # hardcoded ascending "<=" -- a custom comparator (tier 1's Problem class
+    # or tier 3's bare comparator function) may legitimately define a
+    # different order (e.g. descending), and correctly-sorted-by-that-order
+    # output must not be flagged as buggy.
+    is_sorted = all(problem.comparator(data[i], data[i + 1]) <= 0 for i in range(len(data) - 1))
     return {
         'comparisons': stats.get('comparisons', 0),
         'swaps': stats.get('swaps', 0),
@@ -166,7 +171,7 @@ def _json_bridge(event_dict):
 
 _result = ${func}(problem, statistics=True, on_step=_json_bridge)
 _data, _stats = _result
-json.dumps(_polyraptor_sort_summary(_data, _stats))
+json.dumps(_polyraptor_sort_summary(problem, _data, _stats))
 `;
 
   const jsonResult = (await runPythonWithOnStep(
@@ -205,8 +210,9 @@ export async function benchmarkCompareSort(
       const moduleName = ALGORITHM_MODULE[algo];
       return `
 from polysort.algorithms.${moduleName} import ${func} as _algo_${i}
-_r${i}, _stats${i} = _algo_${i}(_PolyraptorCustomSortProblem(${valuesLiteral}), statistics=True)
-_results.append(('${algo}', _polyraptor_sort_summary(_r${i}, _stats${i})))
+_p${i} = _PolyraptorCustomSortProblem(${valuesLiteral})
+_r${i}, _stats${i} = _algo_${i}(_p${i}, statistics=True)
+_results.append(('${algo}', _polyraptor_sort_summary(_p${i}, _r${i}, _stats${i})))
 `;
     })
     .join('\n');

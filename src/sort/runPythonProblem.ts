@@ -101,7 +101,7 @@ def _json_bridge(event_dict):
     _polyraptor_worker_on_step(json.dumps(event_dict))
 _result = ${func}(problem, statistics=True, on_step=_json_bridge)
 _data, _stats = _result
-json.dumps(_polyraptor_sort_summary(_data, _stats))
+json.dumps(_polyraptor_sort_summary(problem, _data, _stats))
 `;
 
   const result = await runUntrusted(python, { _student_source: problem.source_code });
