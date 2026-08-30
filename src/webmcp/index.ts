@@ -7,7 +7,9 @@ import { playbackTools } from './tools.playback';
 
 // evolve_* tools removed for now -- returning once polyevolve exists as a
 // proper Python library (see evolve-js-prototype git tag for the working
-// Matter.js version this replaced).
+// Matter.js version this replaced). searchPythonTools/sortPythonTools now
+// each hold 4 tools (problem + algorithm authoring/running), not 2 -- tier 2
+// extended the same arrays rather than adding new files.
 export function initWebMcp(): { available: boolean; toolCount: number } {
   const available = isWebMcpAvailable();
   const { count } = registerTools([

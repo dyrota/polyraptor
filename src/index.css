@@ -105,6 +105,8 @@ body {
   cursor: pointer;
 }
 .mode-toggle button.active { background: #1f2937; color: white; border-color: #1f2937; }
+.mode-toggle.sub-toggle { margin-bottom: 0.75rem; }
+.mode-toggle.sub-toggle button { font-size: 0.85rem; padding: 0.3rem 0.7rem; }
 
 .python-authoring { margin-bottom: 1rem; }
 .python-editor { border: 1px solid #ccc; border-radius: 6px; overflow: hidden; margin-bottom: 0.5rem; }
