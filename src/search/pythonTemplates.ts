@@ -32,3 +32,33 @@ class Problem(StateSpaceProblem):
         row, col = state
         return (row + 1, col)
 `;
+
+export const SEARCH_ALGORITHM_TEMPLATE = `def algorithm(problem, on_step=None):
+    # Write your own search algorithm. \`problem\` satisfies the
+    # StateSpaceProblem contract (initial_state/goal_check/operators/
+    # apply_operator/cost), whether it's a built-in problem or one you
+    # authored yourself.
+    #
+    # Call on_step({'type': ..., ...}) if you want to drive the visualizer --
+    # 'expand'/'generate'/'reject'/'goal' match the built-in algorithms'
+    # vocabulary for the richest animation, but any event shape still shows
+    # up in a generic trace log.
+    visited = set()
+    stack = [(problem.initial_state(), [])]
+
+    while stack:
+        state, path = stack.pop()
+        if on_step:
+            on_step({'type': 'expand', 'state': state})
+        if problem.goal_check(state):
+            return path + [state]
+        if state in visited:
+            continue
+        visited.add(state)
+        for operator in problem.operators():
+            successor = problem.apply_operator(operator, state)
+            if successor is not None and successor not in visited:
+                stack.append((successor, path + [state]))
+
+    return None
+`;

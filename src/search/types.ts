@@ -103,19 +103,28 @@ export interface AuthoredProblem {
 }
 
 export interface RunSummary {
-  path_found: boolean;
+  // Optional, not required: a custom (tier-2) algorithm has no obligation to
+  // match the built-ins' return convention, so this whole strict shape may
+  // be absent in favor of the loose raw_return_value/event_type_counts pair.
+  path_found?: boolean;
   path?: unknown[] | null;
   path_length?: number;
   cost?: number;
   inferences?: number;
   elapsed_ms?: number;
   visited_count?: number;
+  // Tier 2 only (custom algorithm): the achievable guarantee is genuinely
+  // looser here, not an inconsistency -- see plan doc's tool surface section.
+  raw_return_value?: unknown;
+  event_type_counts?: Record<string, number>;
 }
 
 export interface SearchTrace {
   trace_id: string;
   problem_id: string;
-  algorithm: SearchAlgorithm;
+  // 'custom' when the trace came from a tier-2 student-authored algorithm,
+  // not one of the 8 built-ins.
+  algorithm: SearchAlgorithm | 'custom';
   entries: SearchTraceEntry[];
   summary: RunSummary;
   currentSeq: number;

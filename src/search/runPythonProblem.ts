@@ -16,7 +16,7 @@ import type { FriendlyError } from '../pyodide/friendlyErrors';
 // keeps traceback line numbers meaningful and avoids ever embedding student
 // text in a Python string literal (source arrives via extraGlobals, a live
 // string value via pyodide.globals.set).
-const EXEC_STUDENT_SOURCE = `
+export const EXEC_STUDENT_SOURCE = `
 _student_globals = {}
 exec(compile(_student_source, '<your code>', 'exec'), _student_globals)
 if 'Problem' not in _student_globals:
@@ -24,7 +24,7 @@ if 'Problem' not in _student_globals:
 _ProblemClass = _student_globals['Problem']
 `;
 
-const CHECK_STATESPACEPROBLEM_SUBCLASS = `
+export const CHECK_STATESPACEPROBLEM_SUBCLASS = `
 from polysearch.interfaces import StateSpaceProblem
 if not (isinstance(_ProblemClass, type) and issubclass(_ProblemClass, StateSpaceProblem)):
     raise TypeError('Your class \`Problem\` must inherit from polysearch.interfaces.StateSpaceProblem (from polysearch.interfaces import StateSpaceProblem).')

@@ -4,6 +4,7 @@ import { tracesStore } from '../shared/traceStore';
 import { generateMaze } from './mazeGenerator';
 import { runSearchAlgorithm } from './runAlgorithm';
 import { authorPythonSearchProblem, runAlgorithmOnPythonSearchProblem } from './runPythonProblem';
+import { authorPythonSearchAlgorithm, runPythonAlgorithmOnProblem } from './runPythonAlgorithm';
 import { forceStop } from '../pyodide/workerBridge';
 import { MazeCanvas } from './MazeCanvas';
 import { NQueensBoard } from './NQueensBoard';
@@ -12,7 +13,7 @@ import { PlaybackBar } from '../playback/PlaybackBar';
 import { PythonEditor } from '../shared/PythonEditor';
 import { GenericTraceLog } from '../shared/GenericTraceLog';
 import { ErrorBoundary } from '../shared/ErrorBoundary';
-import { SEARCH_PROBLEM_TEMPLATE } from './pythonTemplates';
+import { SEARCH_PROBLEM_TEMPLATE, SEARCH_ALGORITHM_TEMPLATE } from './pythonTemplates';
 import type { SearchAlgorithm, SearchTrace } from './types';
 
 const ALGORITHMS: SearchAlgorithm[] = [
@@ -45,8 +46,14 @@ export function SearchPanel() {
   // an agent authors and runs Python code while a human's toggle happens to
   // sit on "Built-in", the human must still see it happen immediately.
   const [mode, setMode] = useState<'builtin' | 'python'>('builtin');
+  // Sub-mode within "write your own": author a Problem, or author an
+  // Algorithm to run against whatever problem is currently active (built-in
+  // or custom) -- reuses the existing activeProblem rather than adding a
+  // separate problem-picker UI.
+  const [pythonSubMode, setPythonSubMode] = useState<'problem' | 'algorithm'>('problem');
   const [pythonSource, setPythonSource] = useState(SEARCH_PROBLEM_TEMPLATE);
   const [pythonAlgorithm, setPythonAlgorithm] = useState<SearchAlgorithm>('a_star');
+  const [pythonAlgorithmSource, setPythonAlgorithmSource] = useState(SEARCH_ALGORITHM_TEMPLATE);
   const [pythonError, setPythonError] = useState<{ friendly_error: string; raw_traceback?: string } | null>(null);
   const [showRawTraceback, setShowRawTraceback] = useState(false);
   const [pythonRunning, setPythonRunning] = useState(false);
@@ -125,6 +132,32 @@ export function SearchPanel() {
     }
   }
 
+  // Runs a custom algorithm against whatever problem is currently active
+  // (built-in or a previously-authored custom one) -- same validate-then-run
+  // one-click pattern as handlePythonRun.
+  async function handlePythonAlgorithmRun() {
+    if (!activeProblem) return;
+    setPythonError(null);
+    setPythonRunning(true);
+    setElapsedMs(0);
+    try {
+      const authored = await authorPythonSearchAlgorithm(pythonAlgorithmSource);
+      if (!authored.valid) {
+        setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
+        return;
+      }
+      const result = await runPythonAlgorithmOnProblem(activeProblem, pythonAlgorithmSource);
+      if (!result.ok) {
+        setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
+        if (result.trace) putTrace(result.trace);
+        return;
+      }
+      putTrace(result.trace!);
+    } finally {
+      setPythonRunning(false);
+    }
+  }
+
   function handleStop() {
     forceStop();
     setPythonRunning(false);
@@ -160,18 +193,41 @@ export function SearchPanel() {
 
       {mode === 'python' && (
         <div className="python-authoring">
-          <PythonEditor value={pythonSource} onChange={setPythonSource} readOnly={pythonRunning} />
-          <div className="search-controls">
-            <select value={pythonAlgorithm} onChange={(e) => setPythonAlgorithm(e.target.value as SearchAlgorithm)}>
-              {ALGORITHMS.map((a) => (
-                <option key={a} value={a}>{a}</option>
-              ))}
-            </select>
-            <button onClick={handlePythonRun} disabled={pythonRunning}>
-              {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run'}
-            </button>
-            {pythonRunning && <button onClick={handleStop}>Stop</button>}
+          <div className="mode-toggle sub-toggle">
+            <button className={pythonSubMode === 'problem' ? 'active' : ''} onClick={() => setPythonSubMode('problem')}>Problem</button>
+            <button className={pythonSubMode === 'algorithm' ? 'active' : ''} onClick={() => setPythonSubMode('algorithm')}>Algorithm</button>
           </div>
+
+          {pythonSubMode === 'problem' && (
+            <>
+              <PythonEditor value={pythonSource} onChange={setPythonSource} readOnly={pythonRunning} />
+              <div className="search-controls">
+                <select value={pythonAlgorithm} onChange={(e) => setPythonAlgorithm(e.target.value as SearchAlgorithm)}>
+                  {ALGORITHMS.map((a) => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+                <button onClick={handlePythonRun} disabled={pythonRunning}>
+                  {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run'}
+                </button>
+                {pythonRunning && <button onClick={handleStop}>Stop</button>}
+              </div>
+            </>
+          )}
+
+          {pythonSubMode === 'algorithm' && (
+            <>
+              <PythonEditor value={pythonAlgorithmSource} onChange={setPythonAlgorithmSource} readOnly={pythonRunning} />
+              <div className="search-controls">
+                <button onClick={handlePythonAlgorithmRun} disabled={pythonRunning || !activeProblem}>
+                  {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run against active problem'}
+                </button>
+                {pythonRunning && <button onClick={handleStop}>Stop</button>}
+                {!activeProblem && <span className="search-empty">Author or select a problem first (Built-in or Problem sub-tab).</span>}
+              </div>
+            </>
+          )}
+
           {pythonError && (
             <div className="python-error">
               <div className="python-error-message">{pythonError.friendly_error}</div>
@@ -195,24 +251,38 @@ export function SearchPanel() {
         </p>
       )}
 
-      <ErrorBoundary>
-        {activeProblem?.type === 'maze' && <MazeCanvas problem={activeProblem} trace={activeTrace} />}
-        {activeProblem?.type === 'n_queens' && <NQueensBoard problem={activeProblem} trace={activeTrace} />}
-        {activeProblem?.type === 'missionaries_and_cannibals' && <MissionariesView trace={activeTrace} />}
-        {activeProblem?.type === 'python_problem' && activeTrace && <GenericTraceLog traceId={activeTrace.trace_id} />}
-        {activeProblem?.type === 'python_problem' && !activeTrace && (
-          <p className="search-empty">Problem authored -- run an algorithm against it to see a trace.</p>
-        )}
-      </ErrorBoundary>
+      {/* A custom (tier-2) algorithm's events have no guaranteed shape even
+          against a built-in problem, so GenericTraceLog is the right view
+          whenever the trace itself came from custom code -- not just when
+          the problem did. */}
+      {(() => {
+        const useGenericLog = activeProblem?.type === 'python_problem' || activeTrace?.algorithm === 'custom';
+        return (
+          <ErrorBoundary>
+            {!useGenericLog && activeProblem?.type === 'maze' && <MazeCanvas problem={activeProblem} trace={activeTrace} />}
+            {!useGenericLog && activeProblem?.type === 'n_queens' && <NQueensBoard problem={activeProblem} trace={activeTrace} />}
+            {!useGenericLog && activeProblem?.type === 'missionaries_and_cannibals' && <MissionariesView trace={activeTrace} />}
+            {useGenericLog && activeTrace && <GenericTraceLog traceId={activeTrace.trace_id} />}
+            {useGenericLog && !activeTrace && (
+              <p className="search-empty">Problem authored -- run an algorithm against it to see a trace.</p>
+            )}
+          </ErrorBoundary>
+        );
+      })()}
 
       {activeTrace && (
         <>
           <PlaybackBar traceId={activeTrace.trace_id} />
           <div className="search-summary">
-            <strong>{activeTrace.algorithm}</strong> — {activeTrace.summary.path_found ? (
-              <>path length {activeTrace.summary.path_length}, cost {activeTrace.summary.cost}, {activeTrace.summary.inferences} states expanded</>
+            <strong>{activeTrace.algorithm}</strong> —{' '}
+            {activeTrace.summary.path_found !== undefined ? (
+              activeTrace.summary.path_found ? (
+                <>path length {activeTrace.summary.path_length}, cost {activeTrace.summary.cost}, {activeTrace.summary.inferences} states expanded</>
+              ) : (
+                <>no path found ({activeTrace.summary.inferences ?? 0} states expanded)</>
+              )
             ) : (
-              <>no path found ({activeTrace.summary.inferences ?? 0} states expanded)</>
+              <>returned {JSON.stringify(activeTrace.summary.raw_return_value)}, events: {Object.entries(activeTrace.summary.event_type_counts ?? {}).map(([t, c]) => `${t}:${c}`).join(', ') || 'none'}</>
             )}
           </div>
         </>

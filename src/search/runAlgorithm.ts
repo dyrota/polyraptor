@@ -69,7 +69,7 @@ const HEURISTIC_METHOD: Record<string, string> = {
 export const DEFAULT_MAX_DEPTH = 40;
 const MAX_ALLOWED_MAX_DEPTH = 60;
 
-function buildProblemConstructionCode(problem: AuthoredProblem, varName: string): string {
+export function buildProblemConstructionCode(problem: AuthoredProblem, varName: string): string {
   switch (problem.type) {
     case 'maze': {
       if (!problem.maze || !problem.start || !problem.goal) {

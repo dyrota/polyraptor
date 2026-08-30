@@ -32,3 +32,23 @@ export function getProblem(problemId: string): AuthoredProblem {
   if (!p) throw new Error(`Unknown problem_id: ${problemId}`);
   return p;
 }
+
+// Custom algorithms: no "active id" concept needed, unlike problems/traces —
+// an algorithm has nothing to render standalone, it's only ever referenced
+// by id when running it against some problem.
+export const algorithmsStore = createStore<Record<string, { source_code: string }>>({});
+
+let algorithmCounter = 0;
+export function newAlgorithmId(prefix: string): string {
+  return `${prefix}-${++algorithmCounter}-${Date.now()}`;
+}
+
+export function putAlgorithm(id: string, sourceCode: string) {
+  algorithmsStore.setState((prev) => ({ ...prev, [id]: { source_code: sourceCode } }));
+}
+
+export function getAlgorithm(id: string): { source_code: string } {
+  const a = algorithmsStore.getState()[id];
+  if (!a) throw new Error(`Unknown algorithm_id: ${id}`);
+  return a;
+}
