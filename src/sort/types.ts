@@ -96,17 +96,26 @@ export interface PythonValidationError {
 }
 
 export interface SortRunSummary {
-  comparisons: number;
-  swaps: number;
-  elapsed_ms: number;
-  is_sorted: boolean;
-  final_values: number[];
+  // Optional, not required: a custom (tier-2) algorithm has no obligation to
+  // match the built-ins' return convention, so this whole strict shape may
+  // be absent in favor of the loose raw_return_value/event_type_counts pair.
+  comparisons?: number;
+  swaps?: number;
+  elapsed_ms?: number;
+  is_sorted?: boolean;
+  final_values?: number[];
+  // Tier 2 only (custom algorithm): the achievable guarantee is genuinely
+  // looser here, not an inconsistency -- see plan doc's tool surface section.
+  raw_return_value?: unknown;
+  event_type_counts?: Record<string, number>;
 }
 
 export interface SortTrace {
   trace_id: string;
   problem_id: string;
-  algorithm: SortAlgorithm;
+  // 'custom' when the trace came from a tier-2 student-authored algorithm,
+  // not one of the 10 built-ins.
+  algorithm: SortAlgorithm | 'custom';
   entries: SortTraceEntry[];
   summary: SortRunSummary;
   currentSeq: number;

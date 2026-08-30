@@ -28,3 +28,22 @@ export function getProblem(problemId: string): AuthoredSortProblem {
   if (!p) throw new Error(`Unknown problem_id: ${problemId}`);
   return p;
 }
+
+// Mirrors search/state.ts's algorithm storage exactly -- no "active id"
+// concept needed, an algorithm is only ever referenced by id at run time.
+export const algorithmsStore = createStore<Record<string, { source_code: string }>>({});
+
+let algorithmCounter = 0;
+export function newAlgorithmId(prefix: string): string {
+  return `${prefix}-${++algorithmCounter}-${Date.now()}`;
+}
+
+export function putAlgorithm(id: string, sourceCode: string) {
+  algorithmsStore.setState((prev) => ({ ...prev, [id]: { source_code: sourceCode } }));
+}
+
+export function getAlgorithm(id: string): { source_code: string } {
+  const a = algorithmsStore.getState()[id];
+  if (!a) throw new Error(`Unknown algorithm_id: ${id}`);
+  return a;
+}

@@ -1,7 +1,8 @@
 import type { ToolDefinition } from './registerTool';
 import { logged } from '../shared/toolCallLog';
 import { authorPythonSortProblem, runAlgorithmOnPythonSortProblem } from '../sort/runPythonProblem';
-import { putProblem, putTrace, getProblem, newProblemId } from '../sort/state';
+import { authorPythonSortAlgorithm, runPythonAlgorithmOnProblem } from '../sort/runPythonAlgorithm';
+import { putProblem, putTrace, getProblem, newProblemId, putAlgorithm, getAlgorithm, newAlgorithmId } from '../sort/state';
 import type { SortAlgorithm } from '../sort/types';
 
 const SORT_ALGORITHMS = [
@@ -90,6 +91,79 @@ export const sortPythonTools: ToolDefinition<never>[] = [
             kind: result.kind,
             friendly_error: result.friendly_error,
             raw_traceback: result.raw_traceback,
+          });
+        }
+        putTrace(result.trace!);
+        return JSON.stringify({
+          ok: true,
+          trace_id: result.trace!.trace_id,
+          trace_length: result.trace!.entries.length,
+          summary: result.trace!.summary,
+        });
+      }
+    ),
+  },
+  {
+    name: 'sort_author_python_algorithm',
+    description:
+      'Define a custom sort algorithm as real Python code. Your source must define a function named exactly ' +
+      '`algorithm(problem, on_step=None)` -- `problem` will satisfy the SortProblem contract (built-in or a ' +
+      'custom one you authored). Call on_step(dict) if you accept it, with a "type" key, to drive the ' +
+      'visualizer -- recommended: compare/swap/write/mark matching the built-in algorithms\' vocabulary. ' +
+      'Validated immediately by signature only (never called yet, since there is no problem bound at author ' +
+      'time) -- returns an algorithm_id usable by sort_run_python_algorithm.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        source_code: { type: 'string', description: 'Full Python source defining the `algorithm` function.' },
+      },
+      required: ['source_code'],
+    },
+    execute: logged('sort_author_python_algorithm', async (args: { source_code: string }) => {
+      const result = await authorPythonSortAlgorithm(args.source_code);
+      if (!result.valid) {
+        return JSON.stringify({
+          valid: false,
+          kind: result.kind,
+          friendly_error: result.friendly_error,
+          raw_traceback: result.raw_traceback,
+        });
+      }
+      const algorithmId = newAlgorithmId('sort-algo-py');
+      putAlgorithm(algorithmId, args.source_code);
+      return JSON.stringify({ algorithm_id: algorithmId, valid: true, accepts_on_step: result.accepts_on_step });
+    }),
+  },
+  {
+    name: 'sort_run_python_algorithm',
+    description:
+      'Run a custom algorithm (from sort_author_python_algorithm) against any problem_id -- built-in or custom, ' +
+      'resolved transparently. Since a student\'s algorithm has no obligation to match the built-in algorithms\' ' +
+      'return convention, the summary is looser than sort_run_algorithm\'s: raw_return_value and ' +
+      'event_type_counts (a tally of on_step event types). Returns a trace_id usable by the playback_* tools. A ' +
+      'run that crashes partway through still returns whatever partial trace was captured.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        problem_id: { type: 'string' },
+        algorithm_id: { type: 'string', description: 'From sort_author_python_algorithm.' },
+      },
+      required: ['problem_id', 'algorithm_id'],
+    },
+    execute: logged(
+      'sort_run_python_algorithm',
+      async (args: { problem_id: string; algorithm_id: string }) => {
+        const problem = getProblem(args.problem_id);
+        const algorithm = getAlgorithm(args.algorithm_id);
+        const result = await runPythonAlgorithmOnProblem(problem, algorithm.source_code);
+        if (!result.ok) {
+          return JSON.stringify({
+            ok: false,
+            kind: result.kind,
+            friendly_error: result.friendly_error,
+            raw_traceback: result.raw_traceback,
+            trace_id: result.trace?.trace_id,
+            trace_length: result.trace?.entries.length,
           });
         }
         putTrace(result.trace!);

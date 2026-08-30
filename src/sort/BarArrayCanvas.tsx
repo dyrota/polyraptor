@@ -41,7 +41,11 @@ export function BarArrayCanvas({ problem, trace }: { problem: AuthoredSortProble
     // (see deriveVisualState's comment), so replay alone would never show it
     // as sorted. Every other algorithm's replay already agrees with
     // final_values by construction, so this is a safe universal fallback.
-    const mainValues = atEnd && trace ? trace.summary.final_values : (visual ? visual.mainValues : problem.values);
+    // final_values is absent for a tier-2 custom-algorithm trace (no
+    // guaranteed return shape) -- fall back the same way the "not atEnd"
+    // branch already does.
+    const mainValues =
+      atEnd && trace && trace.summary.final_values ? trace.summary.final_values : visual ? visual.mainValues : problem.values;
 
     const maxValue = Math.max(1, ...problem.values);
     const barWidth = Math.max(1, width / n - MIN_BAR_GAP);

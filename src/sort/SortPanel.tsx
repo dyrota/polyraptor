@@ -3,11 +3,12 @@ import { problemsStore, activeProblemIdStore, activeTraceIdStore, putProblem, pu
 import { tracesStore } from '../shared/traceStore';
 import { authorSortDataset, runSortAlgorithm } from './runAlgorithm';
 import { authorPythonSortProblem, runAlgorithmOnPythonSortProblem } from './runPythonProblem';
+import { authorPythonSortAlgorithm, runPythonAlgorithmOnProblem } from './runPythonAlgorithm';
 import { forceStop } from '../pyodide/workerBridge';
 import { BarArrayCanvas } from './BarArrayCanvas';
 import { PlaybackBar } from '../playback/PlaybackBar';
 import { PythonEditor } from '../shared/PythonEditor';
-import { SORT_PROBLEM_TEMPLATE } from './pythonTemplates';
+import { SORT_PROBLEM_TEMPLATE, SORT_ALGORITHM_TEMPLATE } from './pythonTemplates';
 import type { SortAlgorithm, SortDatasetType, SortTrace } from './types';
 
 const ALGORITHMS: SortAlgorithm[] = [
@@ -43,7 +44,11 @@ export function SortPanel() {
   // an agent authors and runs Python code while a human's toggle happens to
   // sit on "Built-in", the human must still see it happen immediately.
   const [mode, setMode] = useState<'builtin' | 'python'>('builtin');
+  // Sub-mode within "write your own": author a Problem, or author an
+  // Algorithm to run against whatever problem is currently active.
+  const [pythonSubMode, setPythonSubMode] = useState<'problem' | 'algorithm'>('problem');
   const [pythonSource, setPythonSource] = useState(SORT_PROBLEM_TEMPLATE);
+  const [pythonAlgorithmSource, setPythonAlgorithmSource] = useState(SORT_ALGORITHM_TEMPLATE);
   const [pythonError, setPythonError] = useState<{ friendly_error: string; raw_traceback?: string } | null>(null);
   const [showRawTraceback, setShowRawTraceback] = useState(false);
   const [pythonRunning, setPythonRunning] = useState(false);
@@ -116,6 +121,29 @@ export function SortPanel() {
     }
   }
 
+  async function handlePythonAlgorithmRun() {
+    if (!activeProblem) return;
+    setPythonError(null);
+    setPythonRunning(true);
+    setElapsedMs(0);
+    try {
+      const authored = await authorPythonSortAlgorithm(pythonAlgorithmSource);
+      if (!authored.valid) {
+        setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
+        return;
+      }
+      const result = await runPythonAlgorithmOnProblem(activeProblem, pythonAlgorithmSource);
+      if (!result.ok) {
+        setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
+        if (result.trace) putTrace(result.trace);
+        return;
+      }
+      putTrace(result.trace!);
+    } finally {
+      setPythonRunning(false);
+    }
+  }
+
   function handleStop() {
     forceStop();
     setPythonRunning(false);
@@ -157,18 +185,41 @@ export function SortPanel() {
 
       {mode === 'python' && (
         <div className="python-authoring">
-          <PythonEditor value={pythonSource} onChange={setPythonSource} readOnly={pythonRunning} />
-          <div className="search-controls">
-            <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value as SortAlgorithm)}>
-              {ALGORITHMS.map((a) => (
-                <option key={a} value={a}>{a}</option>
-              ))}
-            </select>
-            <button onClick={handlePythonRun} disabled={pythonRunning}>
-              {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run'}
-            </button>
-            {pythonRunning && <button onClick={handleStop}>Stop</button>}
+          <div className="mode-toggle sub-toggle">
+            <button className={pythonSubMode === 'problem' ? 'active' : ''} onClick={() => setPythonSubMode('problem')}>Problem</button>
+            <button className={pythonSubMode === 'algorithm' ? 'active' : ''} onClick={() => setPythonSubMode('algorithm')}>Algorithm</button>
           </div>
+
+          {pythonSubMode === 'problem' && (
+            <>
+              <PythonEditor value={pythonSource} onChange={setPythonSource} readOnly={pythonRunning} />
+              <div className="search-controls">
+                <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value as SortAlgorithm)}>
+                  {ALGORITHMS.map((a) => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+                <button onClick={handlePythonRun} disabled={pythonRunning}>
+                  {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run'}
+                </button>
+                {pythonRunning && <button onClick={handleStop}>Stop</button>}
+              </div>
+            </>
+          )}
+
+          {pythonSubMode === 'algorithm' && (
+            <>
+              <PythonEditor value={pythonAlgorithmSource} onChange={setPythonAlgorithmSource} readOnly={pythonRunning} />
+              <div className="search-controls">
+                <button onClick={handlePythonAlgorithmRun} disabled={pythonRunning || !activeProblem}>
+                  {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run against active problem'}
+                </button>
+                {pythonRunning && <button onClick={handleStop}>Stop</button>}
+                {!activeProblem && <span className="search-empty">Author or select a problem first.</span>}
+              </div>
+            </>
+          )}
+
           {pythonError && (
             <div className="python-error">
               <div className="python-error-message">{pythonError.friendly_error}</div>
@@ -198,8 +249,12 @@ export function SortPanel() {
         <>
           <PlaybackBar traceId={activeTrace.trace_id} />
           <div className="search-summary">
-            <strong>{activeTrace.algorithm}</strong> — {activeTrace.summary.comparisons} comparisons,{' '}
-            {activeTrace.summary.swaps} swaps, {activeTrace.summary.is_sorted ? 'sorted correctly' : 'NOT sorted (bug?)'}
+            <strong>{activeTrace.algorithm}</strong> —{' '}
+            {activeTrace.summary.is_sorted !== undefined ? (
+              <>{activeTrace.summary.comparisons} comparisons, {activeTrace.summary.swaps} swaps, {activeTrace.summary.is_sorted ? 'sorted correctly' : 'NOT sorted (bug?)'}</>
+            ) : (
+              <>returned {JSON.stringify(activeTrace.summary.raw_return_value)}, events: {Object.entries(activeTrace.summary.event_type_counts ?? {}).map(([t, c]) => `${t}:${c}`).join(', ') || 'none'}</>
+            )}
           </div>
         </>
       )}

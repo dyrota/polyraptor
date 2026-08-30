@@ -21,7 +21,7 @@ import type { FriendlyError } from '../pyodide/friendlyErrors';
 // out the required `Problem` class. Source arrives via extraGlobals (a live
 // Python string value via pyodide.globals.set), never embedded in a string
 // literal — avoids any escaping of whatever the student happened to type.
-const EXEC_STUDENT_SOURCE = `
+export const EXEC_STUDENT_SOURCE = `
 _student_globals = {}
 exec(compile(_student_source, '<your code>', 'exec'), _student_globals)
 if 'Problem' not in _student_globals:
@@ -29,7 +29,7 @@ if 'Problem' not in _student_globals:
 _ProblemClass = _student_globals['Problem']
 `;
 
-const CHECK_SORTPROBLEM_SUBCLASS = `
+export const CHECK_SORTPROBLEM_SUBCLASS = `
 from polysort.interfaces import SortProblem
 if not (isinstance(_ProblemClass, type) and issubclass(_ProblemClass, SortProblem)):
     raise TypeError('Your class \`Problem\` must inherit from polysort.interfaces.SortProblem (from polysort.interfaces import SortProblem).')

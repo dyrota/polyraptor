@@ -56,7 +56,7 @@ def _polyraptor_sort_summary(data, stats):
     }
 `;
 
-function buildDatasetConstructionCode(
+export function buildDatasetConstructionCode(
   problem: Omit<AuthoredSortProblem, 'problem_id' | 'values'>,
   varName: string
 ): string {
@@ -102,7 +102,7 @@ function buildDatasetConstructionCode(
 // class satisfies SortProblem's two-method contract at runtime (Python type
 // hints aren't enforced), so there's no need to import or subclass the
 // SortProblem ABC just for this.
-const CUSTOM_PROBLEM_CLASS = `
+export const CUSTOM_PROBLEM_CLASS = `
 class _PolyraptorCustomSortProblem:
     def __init__(self, values):
         self._values = values
