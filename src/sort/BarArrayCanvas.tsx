@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { AuthoredSortProblem, SortTrace } from './types';
 import { deriveSortVisualState } from './deriveVisualState';
+import { VIZ } from '../shared/vizColors';
 
 const MAIN_HEIGHT = 180;
 const AUX_HEIGHT = 40;
@@ -8,9 +9,9 @@ const MARK_HEIGHT = 24;
 const MIN_BAR_GAP = 1;
 
 const HIGHLIGHT_COLOR: Record<string, string> = {
-  compare: '#ffb300',
-  swap: '#e53935',
-  write: '#43a047',
+  compare: VIZ.yellow,
+  swap: VIZ.vermillion,
+  write: VIZ.purple,
 };
 
 // Same imperative ref + useEffect pattern as MazeCanvas — canvas rendering is
@@ -31,7 +32,7 @@ export function BarArrayCanvas({ problem, trace }: { problem: AuthoredSortProble
     canvas.width = width;
     canvas.height = height;
 
-    ctx.fillStyle = '#fafafa';
+    ctx.fillStyle = '#0d1117';
     ctx.fillRect(0, 0, width, height);
 
     const atEnd = trace ? trace.currentSeq >= trace.entries.length - 1 : false;
@@ -56,7 +57,7 @@ export function BarArrayCanvas({ problem, trace }: { problem: AuthoredSortProble
       const x = i * (barWidth + MIN_BAR_GAP);
       const y = MAIN_HEIGHT - barHeight;
       const highlight = visual?.highlighted[i];
-      ctx.fillStyle = highlight ? HIGHLIGHT_COLOR[highlight] : atEnd ? '#4caf50' : '#90caf9';
+      ctx.fillStyle = highlight ? HIGHLIGHT_COLOR[highlight] : atEnd ? VIZ.green : VIZ.sky;
       ctx.fillRect(x, y, barWidth, barHeight);
     }
 
@@ -64,8 +65,8 @@ export function BarArrayCanvas({ problem, trace }: { problem: AuthoredSortProble
     let auxY = MAIN_HEIGHT + 10;
     for (const bufferName of auxBuffers) {
       const values = visual?.auxiliary[bufferName] ?? {};
-      ctx.fillStyle = '#666';
-      ctx.font = '11px sans-serif';
+      ctx.fillStyle = '#b3bac2';
+      ctx.font = '11px ui-monospace, monospace';
       ctx.textAlign = 'left';
       ctx.fillText(bufferName, 4, auxY + 12);
       const entries = Object.entries(values);
@@ -74,14 +75,14 @@ export function BarArrayCanvas({ problem, trace }: { problem: AuthoredSortProble
         const idx = Number(idxStr);
         const barHeight = Math.max(2, (value / auxMax) * (AUX_HEIGHT - 16));
         const x = 60 + idx * (barWidth + MIN_BAR_GAP);
-        ctx.fillStyle = '#ce93d8';
+        ctx.fillStyle = VIZ.purple;
         ctx.fillRect(x, auxY + AUX_HEIGHT - 4 - barHeight, Math.max(2, barWidth), barHeight);
       }
       auxY += AUX_HEIGHT;
     }
 
     // Current mark / status text.
-    ctx.fillStyle = '#333';
+    ctx.fillStyle = '#e6edf3';
     ctx.font = '12px ui-monospace, monospace';
     ctx.textAlign = 'left';
     const statusText = atEnd ? 'sorted' : visual?.markText ?? '';
@@ -93,19 +94,19 @@ export function BarArrayCanvas({ problem, trace }: { problem: AuthoredSortProble
       <canvas ref={canvasRef} />
       <div className="maze-legend">
         <span>
-          <i className="swatch" style={{ background: '#90caf9' }} /> unsorted
+          <i className="swatch" style={{ background: VIZ.sky }} /> unsorted
         </span>
         <span>
-          <i className="swatch" style={{ background: '#ffb300' }} /> comparing
+          <i className="swatch" style={{ background: VIZ.yellow }} /> comparing
         </span>
         <span>
-          <i className="swatch" style={{ background: '#e53935' }} /> swapping
+          <i className="swatch" style={{ background: VIZ.vermillion }} /> swapping
         </span>
         <span>
-          <i className="swatch" style={{ background: '#43a047' }} /> writing
+          <i className="swatch" style={{ background: VIZ.purple }} /> writing
         </span>
         <span>
-          <i className="swatch" style={{ background: '#4caf50' }} /> sorted
+          <i className="swatch" style={{ background: VIZ.green }} /> sorted
         </span>
       </div>
     </div>

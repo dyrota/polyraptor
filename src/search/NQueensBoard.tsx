@@ -26,7 +26,7 @@ export function NQueensBoard({ problem, trace }: { problem: AuthoredProblem; tra
               y={row * cell}
               width={cell}
               height={cell}
-              fill={(row + col) % 2 === 0 ? '#f0d9b5' : '#b58863'}
+              fill={(row + col) % 2 === 0 ? '#3d3227' : '#211a14'}
             />
           ))
         )}
@@ -38,6 +38,7 @@ export function NQueensBoard({ problem, trace }: { problem: AuthoredProblem; tra
             textAnchor="middle"
             dominantBaseline="central"
             fontSize={cell * 0.7}
+            fill="#e6edf3"
           >
             ♛
           </text>

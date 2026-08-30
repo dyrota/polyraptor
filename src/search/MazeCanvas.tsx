@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { AuthoredProblem, SearchTrace } from './types';
 import { deriveSearchVisualState, isStateIn } from './deriveVisualState';
+import { VIZ, BRAND } from '../shared/vizColors';
 
 const CELL_SIZE = 28;
 
@@ -33,16 +34,16 @@ export function MazeCanvas({ problem, trace }: { problem: AuthoredProblem; trace
         const state: [number, number] = [r, c];
         const key = JSON.stringify(state);
 
-        let fill = '#f5f5f5';
-        if (isWall) fill = '#2b2b2b';
-        else if (pathSet.has(key)) fill = '#4caf50';
-        else if (visual && isStateIn(visual.expanded, state)) fill = '#90caf9';
-        else if (visual && isStateIn(visual.frontier, state)) fill = '#fff59d';
-        else if (visual && isStateIn(visual.rejected, state)) fill = '#ffcdd2';
+        let fill = '#161b22';
+        if (isWall) fill = '#010409';
+        else if (pathSet.has(key)) fill = VIZ.green;
+        else if (visual && isStateIn(visual.expanded, state)) fill = VIZ.blue;
+        else if (visual && isStateIn(visual.frontier, state)) fill = VIZ.yellow;
+        else if (visual && isStateIn(visual.rejected, state)) fill = VIZ.vermillion;
 
         ctx.fillStyle = fill;
         ctx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
-        ctx.strokeStyle = '#ddd';
+        ctx.strokeStyle = '#30363d';
         ctx.strokeRect(x, y, CELL_SIZE, CELL_SIZE);
       }
     }
@@ -61,13 +62,13 @@ export function MazeCanvas({ problem, trace }: { problem: AuthoredProblem; trace
       ctx.textBaseline = 'middle';
       ctx.fillText(label, x, y + 1);
     };
-    if (problem.start) drawMarker(problem.start, 'S', '#1565c0');
-    if (problem.goal) drawMarker(problem.goal, 'G', '#c62828');
+    if (problem.start) drawMarker(problem.start, 'S', VIZ.sky);
+    if (problem.goal) drawMarker(problem.goal, 'G', VIZ.purple);
 
     // Current-event highlight ring
     if (visual?.currentState) {
       const [r, c] = visual.currentState as [number, number];
-      ctx.strokeStyle = '#ff6f00';
+      ctx.strokeStyle = BRAND;
       ctx.lineWidth = 3;
       ctx.strokeRect(c * CELL_SIZE + 2, r * CELL_SIZE + 2, CELL_SIZE - 4, CELL_SIZE - 4);
       ctx.lineWidth = 1;
@@ -78,10 +79,10 @@ export function MazeCanvas({ problem, trace }: { problem: AuthoredProblem; trace
     <div className="maze-canvas-wrapper">
       <canvas ref={canvasRef} />
       <div className="maze-legend">
-        <span><i className="swatch" style={{ background: '#90caf9' }} /> expanded</span>
-        <span><i className="swatch" style={{ background: '#fff59d' }} /> frontier</span>
-        <span><i className="swatch" style={{ background: '#ffcdd2' }} /> rejected</span>
-        <span><i className="swatch" style={{ background: '#4caf50' }} /> solution path</span>
+        <span><i className="swatch" style={{ background: VIZ.blue }} /> expanded</span>
+        <span><i className="swatch" style={{ background: VIZ.yellow }} /> frontier</span>
+        <span><i className="swatch" style={{ background: VIZ.vermillion }} /> rejected</span>
+        <span><i className="swatch" style={{ background: VIZ.green }} /> solution path</span>
       </div>
     </div>
   );

@@ -1,19 +1,55 @@
 :root {
-  /* This app is light-only (hardcoded light backgrounds/dark text throughout) —
-     "light dark" here would tell the browser to apply native dark-mode theming
-     to form controls (e.g. white text on <select>) on top of this light-only
-     layout, which is unreadable. Declare light-only to match reality. */
-  color-scheme: light;
+  /* This app's identity is dark-mode-first, full stop -- not a toggleable
+     feature, not `prefers-color-scheme`-driven. A code-editor-centric
+     algorithm visualizer reads as a more serious technical tool this way,
+     and the saturated categorical colors below (see shared/vizColors.ts)
+     read more clearly against a dark ground than they did against white. */
+  color-scheme: dark;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --bg: #0d1117;
+  --bg-header: #010409;
+  --surface: #161b22;
+  --surface-sunken: #0d1117;
+  --surface-hover: #1c2129;
+  --border: #30363d;
+  --border-strong: #454c56;
+  --text: #e6edf3;
+  --text-secondary: #b3bac2;
+  --text-muted: #7d8590;
+
+  /* Brand accent (warm amber -- a raptor's eye) is reserved for UI chrome:
+     active tabs/toggles, links, primary actions. Deliberately never reused
+     for algorithm-state visualization, so "amber" always means "this is
+     the app's own chrome," never "this is what the algorithm is doing." */
+  --brand: #e0972b;
+  --brand-strong: #f2ad4d;
+  --brand-contrast: #14100a;
+
+  --ok: #3fb968;
+  --error: #f06b7a;
+  --error-bg: #3a1a20;
+  --error-border: #6e2733;
+
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --radius: 8px;
+  --shadow-focus: 0 0 0 3px rgba(224, 151, 43, 0.35);
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  background: #f7f7f9;
-  color: #1a1a1a;
+  background: var(--bg);
+  color: var(--text);
 }
+
+button, select, input {
+  font-family: inherit;
+  color: inherit;
+}
+:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: 4px; }
 
 .app-shell {
   min-height: 100vh;
@@ -22,41 +58,54 @@ body {
 }
 
 .app-header {
-  padding: 1rem 1.5rem;
-  background: #111827;
-  color: white;
+  padding: 1.1rem 1.5rem;
+  background: var(--bg-header);
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
 }
-.app-header h1 { margin: 0; font-size: 1.4rem; }
-.app-subtitle { margin: 0.25rem 0 0.5rem; opacity: 0.8; font-size: 0.9rem; }
+.app-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.app-header h1 .brand-mark { font-size: 1.3rem; filter: drop-shadow(0 0 6px rgba(224, 151, 43, 0.5)); }
+.app-header h1 .brand-name-accent { color: var(--brand-strong); }
+.app-subtitle { margin: 0.3rem 0 0.6rem; color: var(--text-secondary); font-size: 0.9rem; }
 
-.status-bar { display: flex; gap: 1rem; font-size: 0.8rem; }
-.status-ok { color: #4caf50; }
-.status-warn { color: #ffb74d; }
-.status-neutral { color: #90caf9; }
+.status-bar { display: flex; gap: 1.25rem; font-size: 0.8rem; font-family: var(--mono); }
+.status-ok { color: var(--ok); }
+.status-warn { color: var(--brand-strong); }
+.status-neutral { color: var(--text-muted); }
 
 .app-tabs {
   display: flex;
   gap: 0.25rem;
-  padding: 0.5rem 1.5rem 0;
-  background: #1f2937;
+  padding: 0 1.5rem;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
 }
 .app-tabs button {
   background: none;
   border: none;
-  color: #ccc;
-  padding: 0.6rem 1.2rem;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  padding: 0.7rem 1.1rem;
   cursor: pointer;
-  border-radius: 6px 6px 0 0;
   font-size: 0.95rem;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
-.app-tabs button.active { background: #f7f7f9; color: #111; font-weight: 600; }
+.app-tabs button:hover { color: var(--text); }
+.app-tabs button.active { color: var(--text); font-weight: 600; border-bottom-color: var(--brand); }
 
 .app-main {
   flex: 1;
   display: grid;
   grid-template-columns: 1fr 340px;
   gap: 1rem;
-  padding: 1rem 1.5rem;
+  padding: 1.25rem 1.5rem;
   align-items: start;
 }
 @media (max-width: 900px) {
@@ -64,19 +113,19 @@ body {
 }
 
 .app-content {
-  background: white;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 1.25rem;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   overflow-x: auto;
 }
 
-.app-sidebar { position: sticky; top: 1rem; }
+.app-sidebar { position: sticky; top: 1.25rem; }
 
 .coming-soon {
   padding: 3rem 1rem;
   text-align: center;
-  color: #888;
+  color: var(--text-muted);
   font-style: italic;
 }
 
@@ -87,87 +136,91 @@ body {
   flex-wrap: wrap;
   margin-bottom: 1rem;
 }
-.search-controls button, .search-controls select {
-  padding: 0.4rem 0.8rem;
+
+/* Shared base for every clickable control in the app -- one place for
+   hover/active/disabled feedback instead of relying on browser defaults. */
+.search-controls button,
+.search-controls select,
+.mode-toggle button,
+.playback-bar button,
+.python-error-toggle {
+  padding: 0.45rem 0.85rem;
   border-radius: 6px;
-  border: 1px solid #ccc;
-  background: white;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-hover);
+  color: var(--text);
   cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
 }
-.search-empty { color: #888; }
+.search-controls button:hover:not(:disabled),
+.mode-toggle button:hover:not(.active),
+.playback-bar button:hover:not(:disabled) { background: #232a34; border-color: var(--text-muted); }
+.search-controls button:active:not(:disabled),
+.playback-bar button:active:not(:disabled) { transform: translateY(1px); }
+.search-controls button:disabled { opacity: 0.5; cursor: not-allowed; }
+.search-controls select { padding: 0.42rem 0.6rem; }
+.search-empty { color: var(--text-muted); }
 
 .mode-toggle { display: flex; gap: 0.25rem; margin-bottom: 1rem; }
-.mode-toggle button {
-  padding: 0.4rem 0.9rem;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-  background: white;
-  cursor: pointer;
-}
-.mode-toggle button.active { background: #1f2937; color: white; border-color: #1f2937; }
+.mode-toggle button.active { background: var(--brand); color: var(--brand-contrast); border-color: var(--brand); font-weight: 600; }
 .mode-toggle.sub-toggle { margin-bottom: 0.75rem; }
-.mode-toggle.sub-toggle button { font-size: 0.85rem; padding: 0.3rem 0.7rem; }
+.mode-toggle.sub-toggle button { font-size: 0.82rem; padding: 0.32rem 0.7rem; }
 
 .python-authoring { margin-bottom: 1rem; }
-.python-editor { border: 1px solid #ccc; border-radius: 6px; overflow: hidden; margin-bottom: 0.5rem; }
+.python-editor { border: 1px solid var(--border-strong); border-radius: 6px; overflow: hidden; margin-bottom: 0.5rem; }
 .python-error {
   margin-top: 0.75rem;
   padding: 0.75rem;
   border-radius: 6px;
-  background: #fdecea;
-  border: 1px solid #f5c2c0;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
 }
-.python-error-message { color: #611a15; font-size: 0.9rem; }
-.python-error-toggle {
-  margin-top: 0.5rem;
-  padding: 0.2rem 0.6rem;
-  font-size: 0.8rem;
-  border: 1px solid #d9a3a0;
-  border-radius: 4px;
-  background: white;
-  cursor: pointer;
-}
+.python-error-message { color: var(--error); font-size: 0.9rem; }
+.python-error-toggle { margin-top: 0.5rem; padding: 0.2rem 0.6rem; font-size: 0.8rem; }
 .python-error-traceback {
   margin-top: 0.5rem;
-  padding: 0.5rem;
-  background: #2b2b2b;
-  color: #eee;
+  padding: 0.6rem;
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-family: var(--mono);
   font-size: 0.75rem;
+  border: 1px solid var(--border);
   border-radius: 4px;
   overflow-x: auto;
   white-space: pre-wrap;
 }
 
-.maze-canvas-wrapper canvas, .bar-canvas-wrapper canvas { border: 1px solid #ccc; border-radius: 4px; max-width: 100%; }
-.maze-legend { display: flex; gap: 1rem; margin-top: 0.5rem; font-size: 0.8rem; color: #555; }
+.maze-canvas-wrapper canvas, .bar-canvas-wrapper canvas { border: 1px solid var(--border-strong); border-radius: 4px; max-width: 100%; }
+.maze-legend { display: flex; gap: 1rem; margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-secondary); flex-wrap: wrap; }
 .maze-legend .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border-radius: 2px; }
 
 .generic-trace-log {
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   max-height: 360px;
   overflow-y: auto;
-  font-family: ui-monospace, monospace;
+  font-family: var(--mono);
   font-size: 0.8rem;
-  background: #fafafa;
+  background: var(--surface-sunken);
 }
-.generic-trace-empty { padding: 1rem; color: #888; }
+.generic-trace-empty { padding: 1rem; color: var(--text-muted); }
 .generic-trace-entry {
   display: flex;
   gap: 0.75rem;
   padding: 0.3rem 0.6rem;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border);
 }
-.generic-trace-entry.current { background: #fff3cd; }
-.generic-trace-seq { color: #888; min-width: 2.5rem; text-align: right; }
-.generic-trace-type { color: #1565c0; font-weight: 600; min-width: 6rem; }
-.generic-trace-rest { color: #333; word-break: break-all; }
+.generic-trace-entry.current { background: rgba(224, 151, 43, 0.16); }
+.generic-trace-seq { color: var(--text-muted); min-width: 2.5rem; text-align: right; }
+.generic-trace-type { color: var(--brand-strong); font-weight: 600; min-width: 6rem; }
+.generic-trace-rest { color: var(--text-secondary); word-break: break-all; }
 
 .error-boundary-fallback {
   padding: 1rem;
-  color: #611a15;
-  background: #fdecea;
-  border: 1px solid #f5c2c0;
+  color: var(--error);
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
   border-radius: 6px;
 }
 
@@ -176,44 +229,46 @@ body {
   align-items: center;
   gap: 0.5rem;
   margin-top: 1rem;
-  padding: 0.5rem;
-  background: #f0f0f3;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
   border-radius: 8px;
 }
-.playback-bar input[type="range"] { flex: 1; }
-.playback-bar button { padding: 0.3rem 0.6rem; border-radius: 6px; border: 1px solid #ccc; background: white; cursor: pointer; }
-.playback-position { font-size: 0.8rem; color: #555; min-width: 4.5rem; text-align: center; }
+.playback-bar input[type="range"] { flex: 1; accent-color: var(--brand); }
+.playback-position { font-size: 0.8rem; color: var(--text-secondary); font-family: var(--mono); min-width: 4.5rem; text-align: center; }
 
-.search-summary { margin-top: 0.75rem; font-size: 0.9rem; color: #333; }
+.search-summary { margin-top: 0.75rem; font-size: 0.9rem; color: var(--text-secondary); font-family: var(--mono); }
 
-.nqueens-caption, .mc-caption { color: #555; font-size: 0.9rem; margin-top: 0.5rem; }
+.nqueens-caption, .mc-caption { color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem; }
 
 .mc-wrapper { display: flex; align-items: center; gap: 1rem; }
-.mc-bank { flex: 1; min-height: 100px; border: 2px dashed #aaa; border-radius: 8px; padding: 0.5rem; text-align: center; position: relative; }
+.mc-bank { flex: 1; min-height: 100px; border: 2px dashed var(--border-strong); border-radius: 8px; padding: 0.5rem; text-align: center; position: relative; }
 .mc-icons { font-size: 1.5rem; }
 .mc-boat { position: absolute; bottom: 4px; right: 8px; font-size: 1.3rem; }
-.mc-river { padding: 0 0.5rem; color: #1565c0; font-weight: 600; writing-mode: vertical-rl; }
+.mc-river { padding: 0 0.5rem; color: #58a6ff; font-weight: 600; writing-mode: vertical-rl; }
 
 .tool-call-log {
-  background: #0d1117;
+  background: var(--bg-header);
   color: #c9d1d9;
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 1rem;
   max-height: 70vh;
   overflow-y: auto;
 }
-.tool-call-log h3 { margin-top: 0; font-size: 0.95rem; }
+.tool-call-log h3 { margin-top: 0; font-size: 0.95rem; color: var(--text); }
 .tool-call-log ul { list-style: none; margin: 0; padding: 0; }
 .tool-call-log-empty { font-size: 0.85rem; color: #8b949e; }
 .tool-call-entry { border-bottom: 1px solid #21262d; padding: 0.5rem 0; }
 .tool-call-header { display: flex; justify-content: space-between; font-size: 0.85rem; }
-.tool-call-name { font-weight: 600; color: #79c0ff; }
+.tool-call-name { font-weight: 600; color: #79c0ff; font-family: var(--mono); }
 .status-ok .tool-call-status { color: #3fb950; }
 .status-error .tool-call-status { color: #f85149; }
 .status-running .tool-call-status { color: #d29922; }
 .tool-call-args, .tool-call-result, .tool-call-error {
   margin: 0.25rem 0 0;
   font-size: 0.75rem;
+  font-family: var(--mono);
   white-space: pre-wrap;
   word-break: break-word;
 }

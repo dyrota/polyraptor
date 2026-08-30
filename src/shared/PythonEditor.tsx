@@ -22,6 +22,7 @@ export function PythonEditor({
       readOnly={readOnly}
       height="240px"
       className="python-editor"
+      theme="dark"
       basicSetup={{ lineNumbers: true, foldGutter: false }}
     />
   );

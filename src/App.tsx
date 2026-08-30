@@ -40,7 +40,10 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <h1>polyraptor</h1>
+        <h1>
+          <span className="brand-mark" aria-hidden="true">🦖</span>
+          poly<span className="brand-name-accent">raptor</span>
+        </h1>
         <p className="app-subtitle">Algorithms you can watch — and that an agent can drive, live, on the exact page you're looking at.</p>
         <div className="status-bar">
           <span className={webMcpStatus?.available ? 'status-ok' : 'status-warn'}>
