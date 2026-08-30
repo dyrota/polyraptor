@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>polyraptor — Phase 0 checkpoint 5 (worker spike)</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+  .box { padding: 1rem; border-radius: 8px; background: #eee; margin-top: 1rem; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 0.85rem; }
+  .ok { background: #d7f4dd; } .fail { background: #f8d7d7; }
+  #ticker { font-size: 2rem; font-weight: bold; }
+  button { padding: 0.5rem 1rem; margin-right: 0.5rem; }
+</style>
+</head>
+<body>
+<h1>Worker spike: streaming + termination</h1>
+
+<h2>Scenario A: streaming during synchronous execution</h2>
+<button onclick="runStreamTest()">Run stream test</button>
+<div id="stream-status" class="box">not run yet</div>
+
+<h2>Scenario B: termination + respawn (main thread stays responsive)</h2>
+<p>Ticker (must keep incrementing through the hang): <span id="ticker">0</span></p>
+<button onclick="runHangTest()">Run hang + terminate test</button>
+<div id="hang-status" class="box">not run yet</div>
+
+<h2>Scenario C: negative control (old main-thread path, expected to freeze)</h2>
+<p>This deliberately freezes the page. Ticker above will stop incrementing — that's the point.</p>
+<button onclick="runNegativeControl()">Run negative control (will freeze)</button>
+<div id="negctrl-status" class="box">not run yet</div>
+
+<script>
+  let tickerValue = 0;
+  window.__ticker = tickerValue;
+  setInterval(() => { tickerValue++; window.__ticker = tickerValue; document.getElementById('ticker').textContent = tickerValue; }, 100);
+
+  window.__streamTimestamps = [];
+  window.__streamEvents = [];
+  let worker = new Worker('./worker.js', { type: 'module' });
+
+  worker.onmessage = (e) => {
+    if (e.data.type === 'on_step') {
+      window.__streamTimestamps.push(performance.now());
+      window.__streamEvents.push(e.data.payload);
+    }
+    if (e.data.type === 'stream-test-done') window.__streamDone = true;
+  };
+
+  window.runStreamTest = function () {
+    window.__streamTimestamps = [];
+    window.__streamEvents = [];
+    window.__streamDone = false;
+    document.getElementById('stream-status').textContent = 'running...';
+    worker.postMessage({ type: 'stream-test' });
+  };
+
+  window.__hangWorkerReady = false;
+  window.runHangTest = async function () {
+    document.getElementById('hang-status').textContent = 'triggering hang...';
+    worker.postMessage({ type: 'hang-test' });
+    window.__hangTriggeredAt = performance.now();
+  };
+
+  window.__respawnAndTestTrivial = function () {
+    worker.terminate();
+    window.__terminatedAt = performance.now();
+    worker = new Worker('./worker.js', { type: 'module' });
+    window.__freshWorkerResult = null;
+    worker.onmessage = (e) => {
+      if (e.data.type === 'trivial-result') {
+        window.__freshWorkerResult = e.data.payload;
+      }
+      // re-attach the stream-test listener behavior too, in case reused later
+      if (e.data.type === 'on_step') {
+        window.__streamTimestamps.push(performance.now());
+        window.__streamEvents.push(e.data.payload);
+      }
+      if (e.data.type === 'stream-test-done') window.__streamDone = true;
+    };
+    worker.postMessage({ type: 'trivial' });
+  };
+
+  // Negative control: minimal main-thread Pyodide load + hang, mirroring
+  // bridge.ts's pattern (script-tag build, direct runPythonAsync, no worker)
+  // without literally importing the real TS module.
+  window.runNegativeControl = async function () {
+    document.getElementById('negctrl-status').textContent = 'loading main-thread pyodide...';
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/pyodide/v314.0.6/full/pyodide.js';
+    document.head.appendChild(script);
+    await new Promise((resolve) => { script.onload = resolve; });
+    const pyodide = await loadPyodide();
+    document.getElementById('negctrl-status').textContent = 'pyodide loaded on main thread, hanging now (page should freeze)...';
+    window.__negCtrlHangStartedAt = performance.now();
+    await pyodide.runPythonAsync('while True:\n    pass\n');
+  };
+</script>
+</body>
+</html>
