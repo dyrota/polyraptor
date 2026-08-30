@@ -206,7 +206,7 @@ json.dumps(_polyraptor_make_summary(_result))
     trace_id: traceId,
     problem_id: problem.problem_id,
     algorithm,
-    entries: collector.entries,
+    entries: collector.entries as unknown as SearchTrace['entries'],
     summary,
     currentSeq: -1,
     playing: false,

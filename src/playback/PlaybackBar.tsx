@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { tracesStore } from '../search/state';
+import { tracesStore } from '../shared/traceStore';
 import { play, pause, step, jumpTo } from './playbackEngine';
 
 // Human-facing controls over the same trace state the WebMCP playback_* tools

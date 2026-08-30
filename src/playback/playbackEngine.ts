@@ -1,4 +1,4 @@
-import { getTrace, updateTrace } from '../search/state';
+import { getTrace, updateTrace } from '../shared/traceStore';
 
 const timers = new Map<string, ReturnType<typeof setInterval>>();
 const BASE_INTERVAL_MS = 220; // per-step delay at speed=1
