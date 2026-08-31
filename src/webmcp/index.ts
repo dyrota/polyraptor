@@ -4,6 +4,7 @@ import { searchPythonTools } from './tools.searchPython';
 import { sortTools } from './tools.sort';
 import { sortPythonTools } from './tools.sortPython';
 import { playbackTools } from './tools.playback';
+import { stateTools } from './tools.state';
 
 // evolve_* tools removed for now -- returning once polyevolve exists as a
 // proper Python library (see evolve-js-prototype git tag for the working
@@ -18,6 +19,7 @@ export function initWebMcp(): { available: boolean; toolCount: number } {
     ...sortTools,
     ...sortPythonTools,
     ...playbackTools,
+    ...stateTools,
   ]);
   return { available, toolCount: count };
 }

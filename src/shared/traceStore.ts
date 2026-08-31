@@ -39,6 +39,9 @@ export function updateTrace(traceId: string, updater: (t: Trace) => Trace): void
 
 export function getTrace(traceId: string): Trace {
   const t = tracesStore.getState()[traceId];
-  if (!t) throw new Error(`Unknown trace_id: ${traceId}`);
+  if (!t)
+    throw new Error(
+      `Unknown trace_id: ${traceId}. Call search_get_state or sort_get_state to find the active trace_id.`
+    );
   return t;
 }

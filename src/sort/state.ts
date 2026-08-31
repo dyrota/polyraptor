@@ -25,7 +25,10 @@ export function putTrace(trace: SortTrace) {
 
 export function getProblem(problemId: string): AuthoredSortProblem {
   const p = problemsStore.getState()[problemId];
-  if (!p) throw new Error(`Unknown problem_id: ${problemId}`);
+  if (!p)
+    throw new Error(
+      `Unknown problem_id: ${problemId}. Call sort_get_state to see which problems exist (the human may have created one), or author a new one.`
+    );
   return p;
 }
 
@@ -44,6 +47,6 @@ export function putAlgorithm(id: string, sourceCode: string) {
 
 export function getAlgorithm(id: string): { source_code: string } {
   const a = algorithmsStore.getState()[id];
-  if (!a) throw new Error(`Unknown algorithm_id: ${id}`);
+  if (!a) throw new Error(`Unknown algorithm_id: ${id}. Call sort_get_state to list authored algorithm_ids.`);
   return a;
 }
