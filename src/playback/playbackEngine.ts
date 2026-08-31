@@ -18,7 +18,12 @@ function stopTimer(traceId: string) {
 export function play(traceId: string, speed = 1): void {
   stopTimer(traceId);
   const clampedSpeed = Math.max(0.25, Math.min(8, speed));
-  updateTrace(traceId, (t) => ({ ...t, playing: true, speed: clampedSpeed }));
+  // Pressing play at the end of a finished trace used to set playing=true and
+  // then pause on the very next tick, so the button visibly did nothing --
+  // the one moment a viewer is most likely to press it. Rewind instead: "play
+  // again" is the only sensible reading of play-at-the-end.
+  const atEnd = getTrace(traceId).currentSeq >= getTrace(traceId).entries.length - 1;
+  updateTrace(traceId, (t) => ({ ...t, playing: true, speed: clampedSpeed, currentSeq: atEnd ? -1 : t.currentSeq }));
 
   const interval = Math.max(15, BASE_INTERVAL_MS / clampedSpeed);
   const handle = setInterval(() => {
@@ -36,6 +41,20 @@ export function play(traceId: string, speed = 1): void {
 export function pause(traceId: string): void {
   stopTimer(traceId);
   updateTrace(traceId, (t) => ({ ...t, playing: false }));
+}
+
+// Changing speed is not the same action as pressing play. The speed <select>
+// called play() directly, so picking a new speed while paused silently
+// started the animation running -- and picking one mid-play restarted the
+// interval, which is right. This preserves whichever state the trace is
+// already in.
+export function setSpeed(traceId: string, speed: number): void {
+  const clampedSpeed = Math.max(0.25, Math.min(8, speed));
+  if (getTrace(traceId).playing) {
+    play(traceId, clampedSpeed);
+    return;
+  }
+  updateTrace(traceId, (t) => ({ ...t, speed: clampedSpeed }));
 }
 
 export function step(traceId: string, direction: 'forward' | 'backward' = 'forward', count = 1): void {

@@ -9,6 +9,7 @@
 import { runUntrusted } from '../pyodide/workerBridge';
 import { makeCollector, newTraceId } from '../pyodide/traceCollector';
 import { ALGORITHM_MODULE, ALGORITHM_FUNC, PY_SUMMARY_HELPER, DEFAULT_MAX_DEPTH } from './runAlgorithm';
+import { PY_SAFE_JSON_HELPER } from '../pyodide/pySafeJson';
 import type { AuthoredProblem, SearchAlgorithm, RunSummary, SearchTrace } from './types';
 import type { FriendlyError } from '../pyodide/friendlyErrors';
 
@@ -50,6 +51,7 @@ export async function authorPythonSearchProblem(sourceCode: string): Promise<Aut
   const python = `
 ${EXEC_STUDENT_SOURCE}
 ${CHECK_STATESPACEPROBLEM_SUBCLASS}
+${PY_SAFE_JSON_HELPER}
 _instance = _ProblemClass()
 _initial = _instance.initial_state()
 _goal_on_initial = bool(_instance.goal_check(_initial))
@@ -60,7 +62,12 @@ if _op_count > 0:
     if _successor is not None:
         _instance.cost(_initial, _successor)
 import json
-json.dumps({'initial_state': _initial, 'operator_count': _op_count, 'goal_check_on_initial': _goal_on_initial})
+# initial_state() only has to be HASHABLE to satisfy StateSpaceProblem (states
+# go into visited sets) -- it does not have to be JSON-serializable. A
+# frozenset or a small custom State class is a legitimate representation, and
+# a bare json.dumps here used to reject those problems with a TypeError that
+# blamed code which was in fact correct.
+json.dumps({'initial_state': _polyraptor_json_safe(_initial), 'operator_count': _op_count, 'goal_check_on_initial': _goal_on_initial})
 `;
 
   const result = await runUntrusted(python, { _student_source: sourceCode });
@@ -120,7 +127,7 @@ ${PY_SUMMARY_HELPER}
 def _json_bridge(event_dict):
     _polyraptor_worker_on_step(json.dumps(event_dict))
 _result = ${func}(problem, ${kwargs.join(', ')})
-json.dumps(_polyraptor_make_summary(_result))
+json.dumps(_polyraptor_make_summary(problem, _result))
 `;
 
   const result = await runUntrusted(python, { _student_source: problem.source_code });

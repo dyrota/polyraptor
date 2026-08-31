@@ -94,6 +94,8 @@ export const sortTools: ToolDefinition<never>[] = [
     name: 'sort_benchmark_compare',
     description:
       'Run multiple sort algorithms on the same problem and compare comparisons/swaps/time side by side. Does not produce an animatable trace.',
+    // Genuinely read-only -- computes and returns stats, mutates no store.
+    annotations: { readOnlyHint: true },
     inputSchema: {
       type: 'object',
       properties: {
@@ -104,6 +106,18 @@ export const sortTools: ToolDefinition<never>[] = [
     },
     execute: logged('sort_benchmark_compare', async (args: { problem_id: string; algorithms: SortAlgorithm[] }) => {
       const problem = getProblem(args.problem_id);
+      // Worse than search's equivalent without this guard: benchmarking a
+      // python_problem did not fail, it silently substituted the built-in
+      // ascending comparator for the student's own and reported the results as
+      // if they were that problem's.
+      if (problem.dataset_type === 'python_problem') {
+        return JSON.stringify({
+          error: true,
+          message:
+            'This problem was authored as Python code, and benchmarking would ignore its custom comparator -- ' +
+            'run one algorithm at a time with sort_run_algorithm_on_python_problem.',
+        });
+      }
       const results = await benchmarkCompareSort(problem, args.algorithms);
       return JSON.stringify({ results });
     }),

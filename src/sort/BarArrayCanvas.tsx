@@ -48,17 +48,39 @@ export function BarArrayCanvas({ problem, trace }: { problem: AuthoredSortProble
     const mainValues =
       atEnd && trace && trace.summary.final_values ? trace.summary.final_values : visual ? visual.mainValues : problem.values;
 
-    const maxValue = Math.max(1, ...problem.values);
+    // Scale across the full observed range rather than from an implicit zero.
+    // With negative data (which polysort explicitly supports -- radix_sort has
+    // dedicated 'negatives'/'non_negatives' buffers) the old `Math.max(1,
+    // ...values)` made every bar clamp to the 2px minimum, so an all-negative
+    // array rendered as a flat line that never appeared to sort. A baseline
+    // drawn at zero keeps the sign readable when the range straddles it.
+    const finite = problem.values.filter((v) => Number.isFinite(v));
+    const dataMin = Math.min(0, ...finite);
+    const dataMax = Math.max(0, ...finite);
+    const span = dataMax - dataMin || 1;
+    const plotHeight = MAIN_HEIGHT - 10;
+    const baselineY = MAIN_HEIGHT - ((0 - dataMin) / span) * plotHeight;
     const barWidth = Math.max(1, width / n - MIN_BAR_GAP);
 
+    if (dataMin < 0) {
+      ctx.strokeStyle = '#30363d';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, baselineY);
+      ctx.lineTo(width, baselineY);
+      ctx.stroke();
+    }
+
     for (let i = 0; i < n; i++) {
-      const value = mainValues[i] ?? 0;
-      const barHeight = Math.max(2, (value / maxValue) * (MAIN_HEIGHT - 10));
+      const raw = mainValues[i];
+      const value = Number.isFinite(raw) ? raw : 0;
+      const valueY = MAIN_HEIGHT - ((value - dataMin) / span) * plotHeight;
+      const top = Math.min(valueY, baselineY);
+      const barHeight = Math.max(2, Math.abs(baselineY - valueY));
       const x = i * (barWidth + MIN_BAR_GAP);
-      const y = MAIN_HEIGHT - barHeight;
       const highlight = visual?.highlighted[i];
       ctx.fillStyle = highlight ? HIGHLIGHT_COLOR[highlight] : atEnd ? VIZ.green : VIZ.sky;
-      ctx.fillRect(x, y, barWidth, barHeight);
+      ctx.fillRect(x, top, barWidth, barHeight);
     }
 
     // Auxiliary buffer strips (key/left/right/count/output/negatives/...).

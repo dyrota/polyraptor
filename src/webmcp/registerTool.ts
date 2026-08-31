@@ -63,9 +63,16 @@ export function registerTools(tools: ToolDefinition<never>[]): { registered: boo
   }
 
   for (const tool of tools) {
+    // readOnlyHint defaults to FALSE, not true. Nearly every tool here mutates
+    // the live page — that is the entire thesis of this project — and the two
+    // that genuinely don't (search_benchmark_compare, playback_get_state) opt
+    // in explicitly. The old default advertised every authoring, running and
+    // playback tool as side-effect-free, which is the exact opposite of what
+    // they do, and invites an agent to call them speculatively or retry them
+    // as if replaying were free.
     modelContext.registerTool({
       ...tool,
-      annotations: { readOnlyHint: true, ...tool.annotations },
+      annotations: { readOnlyHint: false, ...tool.annotations },
     });
   }
 

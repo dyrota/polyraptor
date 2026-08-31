@@ -66,6 +66,9 @@ export const playbackTools: ToolDefinition<never>[] = [
   {
     name: 'playback_get_state',
     description: 'Get the current playback position, total length, and current event of a trace, to narrate in sync with what is on screen.',
+    // The one playback tool that only reads -- play/pause/step/jump_to all
+    // move what the human is watching.
+    annotations: { readOnlyHint: true },
     inputSchema: { type: 'object', properties: { trace_id: { type: 'string' } }, required: ['trace_id'] },
     execute: logged('playback_get_state', async (args: { trace_id: string }) => {
       return JSON.stringify(getPlaybackState(args.trace_id));

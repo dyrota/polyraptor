@@ -38,6 +38,32 @@ function key(r: number, c: number): string {
   return `${r},${c}`;
 }
 
+// start/goal arrive straight from agent-supplied tool args (search_author_maze),
+// where rows/cols are clamped but these were not. Three concrete failures this
+// prevents, all reachable from a single tool call:
+//   - out of bounds ([99, 99] on an 8x8) -> isSolvable indexes maze[99][99] and
+//     throws TypeError, or carvePathBetween's candidate list comes back empty
+//     and destructuring `undefined` throws;
+//   - negative -> same;
+//   - NON-INTEGER ([1.5, 2]) -> the L-shaped fallback walk steps by ±1 from a
+//     fractional row, straddles the goal forever (6.5 -> 7.5 -> 6.5 -> ...) and
+//     HANGS THE TAB in an unkillable main-thread loop.
+// Clamping (rather than throwing) matches how rows/cols/wall_density already
+// treat out-of-range input, so an agent gets a usable maze plus the corrected
+// coordinates echoed back in the tool result, not a dead end.
+function clampCoord(
+  value: unknown,
+  fallback: [number, number],
+  rows: number,
+  cols: number
+): [number, number] {
+  if (!Array.isArray(value) || value.length < 2) return fallback;
+  const r = Math.floor(Number(value[0]));
+  const c = Math.floor(Number(value[1]));
+  if (!Number.isFinite(r) || !Number.isFinite(c)) return fallback;
+  return [Math.max(0, Math.min(rows - 1, r)), Math.max(0, Math.min(cols - 1, c))];
+}
+
 function carvePathBetween(
   rows: number,
   cols: number,
@@ -132,10 +158,11 @@ export function generateMaze(options: MazeGenerationOptions): GeneratedMaze {
   const rows = Math.max(4, Math.min(30, Math.floor(options.rows)));
   const cols = Math.max(4, Math.min(30, Math.floor(options.cols)));
   const wallDensity = Math.max(0, Math.min(0.6, options.wallDensity ?? 0.25));
-  const start: [number, number] = options.start ?? [0, 0];
-  const goal: [number, number] = options.goal ?? [rows - 1, cols - 1];
+  const start = clampCoord(options.start, [0, 0], rows, cols);
+  const goal = clampCoord(options.goal, [rows - 1, cols - 1], rows, cols);
 
-  let seed = options.seed ?? Date.now();
+  const seedOption = Number(options.seed);
+  let seed = Number.isFinite(seedOption) ? Math.floor(seedOption) : Date.now();
   const maxAttempts = 5;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {

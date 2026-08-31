@@ -36,7 +36,14 @@ export function deriveSortVisualState(
   for (let i = 0; i <= currentSeq && i < entries.length; i++) {
     const event = entries[i].event;
     highlighted = {};
-    switch (event.type) {
+    // A custom algorithm can emit anything it likes under a known type name --
+    // a `compare` with no `a`/`b`, a `write` with no `target`. Reading
+    // event.a.buffer on one of those throws, and unlike search's equivalent
+    // (which has had this guard since custom code was introduced) this ran
+    // bare, inside a useEffect, with no ErrorBoundary above it -- so one
+    // malformed event from student code took the whole app to a white screen.
+    try {
+      switch (event.type) {
       case 'compare': {
         // merge/tim's compare events tag 'left'/'right' (ephemeral sub-lists,
         // not main-array positions) and carry the value directly — without
@@ -73,6 +80,9 @@ export function deriveSortVisualState(
         markText = describeMark(event as { kind: string; [key: string]: unknown });
         break;
       }
+      }
+    } catch (err) {
+      console.warn('polyraptor: skipping malformed sort trace event', event, err);
     }
   }
 

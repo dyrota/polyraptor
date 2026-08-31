@@ -13,12 +13,20 @@ export function pyInt(x: unknown, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
 
+// Numbers are preserved as given, not truncated. This used to Math.trunc()
+// every value, so a tool call or comparator box saying [3.7, 1.2] silently
+// became [3, 1] -- while both the schema and the UI label said "numbers".
+// Floats are safe here: 8 of polysort's 10 algorithms are comparison-based and
+// handle them, and the two that don't (counting_sort/radix_sort, integer-only
+// by nature) raise their own explicit TypeError, which the friendly-error path
+// already turns into a readable message. A wrong answer quietly is worse than
+// a clear error loudly.
 export function pyIntListLiteral(values: unknown): string {
   if (!Array.isArray(values) || values.length === 0 || !values.every((v) => Number.isFinite(Number(v)))) {
     throw new Error('Invalid values: expected a non-empty array of numbers.');
   }
-  const ints = values.map((v) => Math.trunc(Number(v)));
-  return JSON.stringify(ints); // valid Python list literal syntax too
+  const nums = values.map((v) => Number(v));
+  return JSON.stringify(nums); // valid Python list literal syntax too
 }
 
 export const ALGORITHM_MODULE: Record<SortAlgorithm, string> = {

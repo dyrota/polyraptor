@@ -12,6 +12,7 @@
 import { runUntrusted } from '../pyodide/workerBridge';
 import { makeCollector, newTraceId } from '../pyodide/traceCollector';
 import { ALGORITHM_MODULE, algorithmFunctionName, PY_SORT_SUMMARY_HELPER } from './runAlgorithm';
+import { PY_SAFE_JSON_HELPER } from '../pyodide/pySafeJson';
 import type { AuthoredSortProblem, SortAlgorithm, SortRunSummary, SortTrace } from './types';
 import type { FriendlyError } from '../pyodide/friendlyErrors';
 
@@ -48,6 +49,7 @@ export async function authorPythonSortProblem(sourceCode: string): Promise<Autho
   const python = `
 ${EXEC_STUDENT_SOURCE}
 ${CHECK_SORTPROBLEM_SUBCLASS}
+${PY_SAFE_JSON_HELPER}
 _instance = _ProblemClass()
 _data = _instance.data()
 if not isinstance(_data, list) or not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in _data):
@@ -57,7 +59,9 @@ if len(_data) < 1:
 _probe_b = _data[1] if len(_data) >= 2 else _data[0]
 _instance.comparator(_data[0], _probe_b)
 import json
-json.dumps({'size': len(_data), 'values': _data})
+# float('inf') passes the isinstance((int, float)) check above, and json.dumps
+# would emit a bare Infinity token that JS's JSON.parse rejects.
+json.dumps({'size': len(_data), 'values': _polyraptor_json_safe(_data)})
 `;
 
   const result = await runUntrusted(python, { _student_source: sourceCode });
@@ -97,11 +101,14 @@ ${EXEC_STUDENT_SOURCE}
 ${CHECK_SORTPROBLEM_SUBCLASS}
 problem = _ProblemClass()
 ${PY_SORT_SUMMARY_HELPER}
+${PY_SAFE_JSON_HELPER}
 def _json_bridge(event_dict):
-    _polyraptor_worker_on_step(json.dumps(event_dict))
+    _polyraptor_worker_on_step(json.dumps(_polyraptor_json_safe(event_dict)))
 _result = ${func}(problem, statistics=True, on_step=_json_bridge)
 _data, _stats = _result
-json.dumps(_polyraptor_sort_summary(problem, _data, _stats))
+# final_values comes straight from the student's own data(), so it can carry a
+# non-finite float the built-in path would never produce.
+json.dumps(_polyraptor_json_safe(_polyraptor_sort_summary(problem, _data, _stats)))
 `;
 
   const result = await runUntrusted(python, { _student_source: problem.source_code });

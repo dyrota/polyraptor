@@ -15,6 +15,7 @@
 import { runUntrusted } from '../pyodide/workerBridge';
 import { makeCollector, newTraceId } from '../pyodide/traceCollector';
 import { pyIntListLiteral, CUSTOM_PROBLEM_CLASS } from './runAlgorithm';
+import { PY_SAFE_JSON_HELPER } from '../pyodide/pySafeJson';
 import { EXEC_STUDENT_SOURCE as EXEC_STUDENT_PROBLEM_SOURCE, CHECK_SORTPROBLEM_SUBCLASS } from './runPythonProblem';
 import type { AuthoredSortProblem, SortTrace } from './types';
 import type { FriendlyError } from '../pyodide/friendlyErrors';
@@ -90,18 +91,17 @@ export async function runPythonAlgorithmOnProblem(
 import json, inspect
 ${problemConstructionPython}
 ${EXEC_STUDENT_ALGORITHM}
+${PY_SAFE_JSON_HELPER}
 _sig = inspect.signature(_AlgorithmFn)
 def _json_bridge(event_dict):
-    _polyraptor_worker_on_step(json.dumps(event_dict))
+    _polyraptor_worker_on_step(json.dumps(_polyraptor_json_safe(event_dict)))
 if 'on_step' in _sig.parameters:
     _raw_result = _AlgorithmFn(problem, on_step=_json_bridge)
 else:
     _raw_result = _AlgorithmFn(problem)
-try:
-    _raw_json = json.dumps(_raw_result)
-except (TypeError, ValueError):
-    _raw_json = json.dumps(str(_raw_result))
-json.dumps({'raw_return_value': json.loads(_raw_json)})
+# See the search mirror: json.dumps happily emits Infinity/NaN, which JS's
+# JSON.parse rejects -- the old try/except only covered non-serializable types.
+json.dumps({'raw_return_value': _polyraptor_json_safe(_raw_result)})
 `;
 
   const result = await runUntrusted(python, extraGlobals);

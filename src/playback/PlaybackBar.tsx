@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from 'react';
 import { tracesStore } from '../shared/traceStore';
-import { play, pause, step, jumpTo } from './playbackEngine';
+import { play, pause, step, jumpTo, setSpeed } from './playbackEngine';
+
+const SPEEDS = [0.25, 0.5, 1, 2, 4, 8];
 
 // Human-facing controls over the same trace state the WebMCP playback_* tools
 // drive — this is the "human and agent touch the same live state" surface:
@@ -30,8 +32,12 @@ export function PlaybackBar({ traceId }: { traceId: string }) {
       <span className="playback-position">
         {trace.currentSeq + 1} / {trace.entries.length}
       </span>
-      <select value={trace.speed} onChange={(e) => play(traceId, Number(e.target.value))}>
-        {[0.5, 1, 2, 4, 8].map((s) => (
+      {/* setSpeed, not play: picking a speed while paused should not start the
+          animation. The option list also includes any speed an agent set via
+          playback_play that isn't one of the presets (the engine accepts
+          0.25-8), so the control never renders blank on a value it can't show. */}
+      <select value={trace.speed} onChange={(e) => setSpeed(traceId, Number(e.target.value))}>
+        {(SPEEDS.includes(trace.speed) ? SPEEDS : [...SPEEDS, trace.speed].sort((a, b) => a - b)).map((s) => (
           <option key={s} value={s}>{s}x</option>
         ))}
       </select>

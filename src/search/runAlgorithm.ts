@@ -62,6 +62,41 @@ const HEURISTIC_METHOD: Record<string, string> = {
   trips: 'trips_heuristic',
 };
 
+// Each heuristic is a method on ONE problem class, not a shared library
+// function (verified against the wheel: MazeProblem defines manhattan/
+// euclidean, NQueensProblem only attacking_queen_pairs, and
+// MissionariesAndCannibalsProblem only trips). The tool schema offers all four
+// on every problem, so an agent picking the wrong pairing used to get a raw
+// `'NQueensProblem' object has no attribute 'manhattan_distance_heuristic'`
+// from deep inside generated Python. Catching it here means the agent gets
+// told which heuristics its problem actually supports and can retry.
+export const HEURISTICS_BY_PROBLEM_TYPE: Record<string, string[]> = {
+  maze: ['manhattan_distance', 'euclidean_distance'],
+  n_queens: ['attacking_queen_pairs'],
+  missionaries_and_cannibals: ['trips'],
+};
+
+export function assertHeuristicApplies(problem: AuthoredProblem, heuristic: string): void {
+  if (!HEURISTIC_METHOD[heuristic]) {
+    throw new Error(
+      `Unknown heuristic: ${heuristic}. Valid heuristics are: ${Object.keys(HEURISTIC_METHOD).join(', ')}.`
+    );
+  }
+  const allowed = HEURISTICS_BY_PROBLEM_TYPE[problem.type];
+  if (!allowed) {
+    throw new Error(
+      `Built-in heuristics don't apply to a '${problem.type}' problem. ` +
+        'Use search_author_python_heuristic to define one for it.'
+    );
+  }
+  if (!allowed.includes(heuristic)) {
+    throw new Error(
+      `Heuristic '${heuristic}' is not defined for a '${problem.type}' problem. ` +
+        `Valid for this problem: ${allowed.join(', ')}.`
+    );
+  }
+}
+
 // iterative_deepening_search(problem, max_depth=None, ...) is genuinely
 // unbounded when max_depth is None (confirmed by reading the source — a bare
 // `while True: depth += 1` with recursion scaling with the reached depth).
@@ -112,17 +147,41 @@ export function buildProblemConstructionCode(problem: AuthoredProblem, varName: 
 //     ever found, which `json.dumps` will emit as the non-standard `Infinity`
 //     token — valid to Python's json module, but invalid JSON that would
 //     break JS's strict `JSON.parse` on the other side of the bridge.
+//  4. hill_climbing_search returns its PARTIAL path when it gets stuck without
+//     reaching a goal — a non-None value that "path is not None" wrongly reads
+//     as success. Verified against the library: 6-queens hill climbing that
+//     immediately stalls returns {'path': [()]}, which this used to report as
+//     "path found, length 1, cost 0". Every other algorithm returns None or
+//     {'path': None} on failure, so hill climbing was the one case where the
+//     summary actively lied. Rather than special-casing that one algorithm,
+//     the check is now universal and authoritative: a path counts as found
+//     only if the problem's OWN goal_check accepts its final state. Same
+//     defensive spirit as _polyraptor_sort_summary asking the problem's own
+//     comparator whether the output is sorted.
 export const PY_SUMMARY_HELPER = `
 def _polyraptor_sanitize(v):
     if isinstance(v, float) and (v != v or v in (float('inf'), float('-inf'))):
         return None
     return v
 
-def _polyraptor_make_summary(result):
+def _polyraptor_path_reaches_goal(problem, path):
+    if not path:
+        return False
+    try:
+        return bool(problem.goal_check(path[-1]))
+    except Exception:
+        # A custom problem's goal_check can raise on its own partial state.
+        # Fall back to the old "a path is a path" reading rather than losing
+        # the whole summary to someone else's bug.
+        return True
+
+def _polyraptor_make_summary(problem, result):
     if result is None:
         return {'path_found': False, 'path': None, 'path_length': None, 'cost': None, 'inferences': None, 'elapsed_ms': None}
     path_dict, visited_dict, stats_dict = result
     path = path_dict.get('path') if path_dict else None
+    if path is not None and not _polyraptor_path_reaches_goal(problem, path):
+        path = None
     stats_dict = stats_dict or {}
     time_val = stats_dict.get('time')
     return {
@@ -133,7 +192,11 @@ def _polyraptor_make_summary(result):
         # serialize fine through json.dumps -> JSON.parse.
         'path': path,
         'path_length': len(path) if path else None,
-        'cost': _polyraptor_sanitize(stats_dict.get('cost')),
+        # Nulled alongside the path when the run didn't actually reach a goal:
+        # hill climbing still reports a cost for the partial climb it made, and
+        # a "cost: 0" sitting next to "path_found: false" reads to an agent as
+        # a free solution rather than a failure.
+        'cost': _polyraptor_sanitize(stats_dict.get('cost')) if path is not None else None,
         'inferences': stats_dict.get('inferences'),
         'elapsed_ms': (time_val * 1000) if time_val is not None else None,
     }
@@ -161,8 +224,7 @@ export async function runSearchAlgorithm(
   const kwargs: string[] = ['statistics=True', 'on_step=_json_bridge'];
 
   if (TAKES_HEURISTIC.has(algorithm) && options.heuristic) {
-    const method = HEURISTIC_METHOD[options.heuristic];
-    if (!method) throw new Error(`Unknown heuristic: ${options.heuristic}`);
+    assertHeuristicApplies(problem, options.heuristic);
     kwargs.push('heuristic=_heuristic');
   }
   if (algorithm === 'hill_climbing') {
@@ -172,10 +234,28 @@ export async function runSearchAlgorithm(
       kwargs.push(`num_restarts=${n}`);
     }
   }
-  if (algorithm === 'iterative_deepening') {
-    const cap = Math.max(2, Math.min(MAX_ALLOWED_MAX_DEPTH, Math.floor(options.max_depth ?? DEFAULT_MAX_DEPTH)));
-    kwargs.push(`max_depth=${cap}`);
-  }
+  const idCap = Math.max(2, Math.min(MAX_ALLOWED_MAX_DEPTH, Math.floor(options.max_depth ?? DEFAULT_MAX_DEPTH)));
+
+  // iterative_deepening only actually *iterates* when max_depth is None — a
+  // path this app must never take, since it's genuinely unbounded. Handed an
+  // explicit max_depth, the library runs ONE depth-limited DFS at exactly that
+  // depth, so "iterative_deepening" was silently behaving as plain
+  // depth-limited DFS: it returned the first path it stumbled into rather than
+  // the shallowest one. Verified on an open 8x8 maze — max_depth=40 returned a
+  // 40-step path where the optimum is 14, and every other algorithm on the
+  // same maze returned 14. Driving the deepening loop from here restores the
+  // real semantics (shallowest solution wins) while keeping the depth cap that
+  // made the explicit max_depth necessary in the first place. Costs nothing
+  // for the animation either — re-searching from scratch at each depth limit
+  // is exactly what iterative deepening looks like, and the trace now shows it.
+  const runCall =
+    algorithm === 'iterative_deepening'
+      ? `_result = None
+for _depth in range(1, ${idCap} + 1):
+    _result = ${func}(problem, max_depth=_depth, ${kwargs.join(', ')})
+    if _result is not None:
+        break`
+      : `_result = ${func}(problem, ${kwargs.join(', ')})`;
 
   const heuristicDef =
     TAKES_HEURISTIC.has(algorithm) && options.heuristic
@@ -191,8 +271,8 @@ ${PY_SUMMARY_HELPER}
 def _json_bridge(event_dict):
     on_step_placeholder(json.dumps(event_dict))
 
-_result = ${func}(problem, ${kwargs.join(', ')})
-json.dumps(_polyraptor_make_summary(_result))
+${runCall}
+json.dumps(_polyraptor_make_summary(problem, _result))
 `; // on_step_placeholder swapped for the real per-call bridge global name below
 
   const jsonResult = (await runPythonWithOnStep(
@@ -201,6 +281,18 @@ json.dumps(_polyraptor_make_summary(_result))
   )) as string;
 
   const summary: RunSummary = JSON.parse(jsonResult);
+
+  // iterative_deepening's returned `inferences` counts outer depth iterations,
+  // not nodes — and in the explicit-max_depth branch it is never incremented
+  // at all, so it always came back as 0. That made iterative deepening look
+  // infinitely cheaper than every other algorithm in search_benchmark_compare.
+  // Its per-event `inferences` field carries the real node count, so the
+  // expand events already in hand are the honest source. (Left alone for every
+  // other algorithm, where the library's own count is correct and means
+  // something slightly different: nodes popped from the frontier.)
+  if (algorithm === 'iterative_deepening') {
+    summary.inferences = collector.entries.filter((e) => e.event.type === 'expand').length;
+  }
 
   return {
     trace_id: traceId,
@@ -224,6 +316,12 @@ export async function benchmarkCompareSearch(
   algorithms: SearchAlgorithm[],
   heuristic?: string
 ): Promise<BenchmarkResult[]> {
+  // Same validation runSearchAlgorithm already does — without it an unknown
+  // heuristic name interpolated straight into the source below produced
+  // `problem.undefined(state)` and a baffling Python AttributeError instead of
+  // naming the actual mistake.
+  if (heuristic) assertHeuristicApplies(problem, heuristic);
+
   const problemCode = buildProblemConstructionCode(problem, 'problem');
   const results: BenchmarkResult[] = [];
 
@@ -235,11 +333,22 @@ export async function benchmarkCompareSearch(
       const moduleName = ALGORITHM_MODULE[algo];
       const kwargs: string[] = ['statistics=True'];
       if (TAKES_HEURISTIC.has(algo) && heuristic) kwargs.push('heuristic=_heuristic');
-      if (algo === 'iterative_deepening') kwargs.push(`max_depth=${DEFAULT_MAX_DEPTH}`);
+      // Deepening loop, for the same reason as runSearchAlgorithm's — a single
+      // depth-limited DFS at max_depth is not iterative deepening, and
+      // reporting its non-optimal path length next to the other algorithms'
+      // optimal ones is exactly the comparison this tool exists to get right.
+      const call =
+        algo === 'iterative_deepening'
+          ? `_r${i} = None
+for _depth in range(1, ${DEFAULT_MAX_DEPTH} + 1):
+    _r${i} = _algo_${i}(problem, max_depth=_depth, ${kwargs.join(', ')})
+    if _r${i} is not None:
+        break`
+          : `_r${i} = _algo_${i}(problem, ${kwargs.join(', ')})`;
       return `
 from polysearch.algorithms.${moduleName} import ${func} as _algo_${i}
-_r${i} = _algo_${i}(problem, ${kwargs.join(', ')})
-_results.append(('${algo}', _polyraptor_make_summary(_r${i})))
+${call}
+_results.append(('${algo}', _polyraptor_make_summary(problem, _r${i})))
 `;
     })
     .join('\n');

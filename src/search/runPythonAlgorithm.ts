@@ -6,6 +6,7 @@
 import { runUntrusted } from '../pyodide/workerBridge';
 import { makeCollector, newTraceId } from '../pyodide/traceCollector';
 import { buildProblemConstructionCode } from './runAlgorithm';
+import { PY_SAFE_JSON_HELPER } from '../pyodide/pySafeJson';
 import { EXEC_STUDENT_SOURCE as EXEC_STUDENT_PROBLEM_SOURCE, CHECK_STATESPACEPROBLEM_SUBCLASS } from './runPythonProblem';
 import type { AuthoredProblem, SearchTrace } from './types';
 import type { FriendlyError } from '../pyodide/friendlyErrors';
@@ -93,18 +94,20 @@ export async function runPythonAlgorithmOnProblem(
 import json, inspect
 ${problemConstructionPython}
 ${EXEC_STUDENT_ALGORITHM}
+${PY_SAFE_JSON_HELPER}
 _sig = inspect.signature(_AlgorithmFn)
 def _json_bridge(event_dict):
-    _polyraptor_worker_on_step(json.dumps(event_dict))
+    _polyraptor_worker_on_step(json.dumps(_polyraptor_json_safe(event_dict)))
 if 'on_step' in _sig.parameters:
     _raw_result = _AlgorithmFn(problem, on_step=_json_bridge)
 else:
     _raw_result = _AlgorithmFn(problem)
-try:
-    _raw_json = json.dumps(_raw_result)
-except (TypeError, ValueError):
-    _raw_json = json.dumps(str(_raw_result))
-json.dumps({'raw_return_value': json.loads(_raw_json)})
+# The old try/except json.dumps caught a non-serializable return value but not
+# a non-finite float inside an otherwise fine one: json.dumps SUCCEEDS there,
+# emitting a bare Infinity/NaN token that JS's JSON.parse then rejects, failing
+# the whole call after the algorithm had already run correctly. _json_safe
+# handles both, and covers the event payloads for the same reason.
+json.dumps({'raw_return_value': _polyraptor_json_safe(_raw_result)})
 `;
 
   const result = await runUntrusted(python, extraGlobals);

@@ -7,6 +7,7 @@
 import { runUntrusted } from '../pyodide/workerBridge';
 import { makeCollector, newTraceId } from '../pyodide/traceCollector';
 import { ALGORITHM_MODULE, ALGORITHM_FUNC, PY_SUMMARY_HELPER, buildProblemConstructionCode } from './runAlgorithm';
+import { PY_SAFE_JSON_HELPER } from '../pyodide/pySafeJson';
 import { EXEC_STUDENT_SOURCE as EXEC_STUDENT_PROBLEM_SOURCE, CHECK_STATESPACEPROBLEM_SUBCLASS } from './runPythonProblem';
 import type { AuthoredProblem, SearchTrace, RunSummary } from './types';
 import type { FriendlyError } from '../pyodide/friendlyErrors';
@@ -22,8 +23,12 @@ if not callable(_HeuristicFn):
 `;
 
 // Mutates extraGlobals in place (adds _student_source when the problem is
-// itself custom) -- a private helper, side effect is fine at this scope.
-function buildAnyProblemConstructionPython(problem: AuthoredProblem, extraGlobals: Record<string, string>): string {
+// itself custom) -- side effect is fine at this scope. Exported because
+// verifyHeuristic.ts needs the identical built-in-vs-custom branching: any
+// problem you can run a heuristic against is one you should be able to verify
+// it against, and the two must construct the problem the same way or the
+// verdict wouldn't describe the run.
+export function buildAnyProblemConstructionPython(problem: AuthoredProblem, extraGlobals: Record<string, string>): string {
   if (problem.type === 'python_problem') {
     if (!problem.source_code) throw new Error('This problem has no stored Python source to re-run.');
     extraGlobals._student_source = problem.source_code;
@@ -53,11 +58,15 @@ export async function authorPythonSearchHeuristic(
   const python = `
 ${problemConstructionPython}
 ${EXEC_STUDENT_HEURISTIC}
+${PY_SAFE_JSON_HELPER}
 _sample = _HeuristicFn(problem.initial_state())
 if not isinstance(_sample, (int, float)) or isinstance(_sample, bool):
     raise TypeError('\`heuristic\` must return a number.')
 import json
-json.dumps({'sample_value': _sample})
+# float('inf') passes the isinstance check above and is the idiomatic way to
+# say "unreachable" in a heuristic -- but json.dumps would emit a bare
+# Infinity token that JS's JSON.parse rejects outright.
+json.dumps({'sample_value': _polyraptor_json_safe(_sample)})
 `;
   const result = await runUntrusted(python, extraGlobals);
   if (!result.ok) {
@@ -104,7 +113,7 @@ ${PY_SUMMARY_HELPER}
 def _json_bridge(event_dict):
     _polyraptor_worker_on_step(json.dumps(event_dict))
 _result = ${func}(problem, heuristic=_heuristic, statistics=True, on_step=_json_bridge)
-json.dumps(_polyraptor_make_summary(_result))
+json.dumps(_polyraptor_make_summary(problem, _result))
 `;
 
   const result = await runUntrusted(python, extraGlobals);

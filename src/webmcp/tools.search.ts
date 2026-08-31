@@ -149,6 +149,9 @@ export const searchTools: ToolDefinition<never>[] = [
     name: 'search_benchmark_compare',
     description:
       'Run multiple search algorithms on the same problem and compare their stats (path length, cost, inferences, time) side by side. Does not produce an animatable trace.',
+    // Genuinely read-only: computes stats and returns them without touching
+    // any store, unlike every other tool in this file.
+    annotations: { readOnlyHint: true },
     inputSchema: {
       type: 'object',
       properties: {
@@ -162,6 +165,17 @@ export const searchTools: ToolDefinition<never>[] = [
       'search_benchmark_compare',
       async (args: { problem_id: string; algorithms: SearchAlgorithm[]; heuristic?: string }) => {
         const problem = getProblem(args.problem_id);
+        // Same guard search_run_algorithm already had. Without it a custom
+        // problem reached buildProblemConstructionCode and came back as a bare
+        // "Unknown problem type: python_problem" with no hint about what to do.
+        if (problem.type === 'python_problem') {
+          return JSON.stringify({
+            error: true,
+            message:
+              'This problem was authored as Python code, which benchmarking does not support yet -- run one ' +
+              'algorithm at a time with search_run_algorithm_on_python_problem.',
+          });
+        }
         const results = await benchmarkCompareSearch(problem, args.algorithms, args.heuristic);
         return JSON.stringify({ results });
       }
@@ -173,7 +187,11 @@ export const searchTools: ToolDefinition<never>[] = [
       'Propose a custom heuristic for A*/best-first search as a weighted combination of manhattan_distance and ' +
       'euclidean_distance (weights 0-3, not required to sum to 1), and empirically check whether it is admissible ' +
       '(never overestimates true remaining cost). Weights above 1 are likely to be inadmissible and will usually ' +
-      'produce a concrete counterexample state. Maze problems only. Also produces an animatable trace of the run.',
+      'produce a concrete counterexample state. Maze problems only, and limited to those two weighted terms — ' +
+      'this is the convenience form. To check an ARBITRARY heuristic you write yourself, against any problem type ' +
+      'including custom ones, author it with search_author_python_heuristic and check it with ' +
+      'search_verify_heuristic, which additionally tests consistency and tells you whether its verdict is proven ' +
+      'or merely unrefuted. Also produces an animatable trace of the run.',
     inputSchema: {
       type: 'object',
       properties: {
