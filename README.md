@@ -82,12 +82,13 @@ node scripts/e2e-smoke.mjs http://localhost:5173/
 - **Comparator verification for sort** — the same machinery applied to the other family. A comparator has real checkable properties (totality, antisymmetry, transitivity), and an intransitive one is a classic bug that produces silently wrong output rather than an error.
 - **Interleaved human/agent activity log** — the sidebar currently shows only the agent's tool calls, so a human's own clicks are invisible in the one place the shared-state thesis would be most legible.
 
-### Upstream fixes owed to `polysearch`
+## Vendored library changes
 
-Two library bugs are currently worked around in this app and should be fixed at the source:
+`public/wheels/` holds locally-built wheels, so the two libraries and this app move together. Both have `on_step` instrumentation that upstream did not have, and three bugs found while building this app were fixed at the source rather than worked around here:
 
-- `iterative_deepening.py` only *iterates* when `max_depth is None` — a genuinely unbounded path no UI can call. Given an explicit `max_depth` it runs a single depth-limited DFS at that depth, returning the first path it finds rather than the shallowest (a 41-step path on an open 8×8 maze where the optimum is 15). It also never increments `inferences` on that branch, so it always reports `0`; the correct `node_count` is already computed and unused.
-- `hill_climbing.py` returns its partial path as `{'path': ...}` when it stalls, which reads as success. With `random_restart=True` it then selects on lowest path cost, so it actively prefers a restart that stalled immediately (cost 0) over one that reached the goal.
+- **`iterative_deepening` never iterated.** It treated `max_depth` as the depth to search *at* rather than a ceiling, so it ran one depth-limited DFS and returned whatever it found — a 57-step path on an open 8×8 grid where the optimum is 15. It also reported `inferences: 0` on that branch, making it look free next to every other algorithm.
+- **`hill_climbing` reported stalls as solutions**, returning its partial path when it hit a local optimum. Worse, `random_restart` selected on lowest cost, so a climb that stalled immediately (cost 0) beat one that reached the goal — it reliably picked the *worst* attempt. Restarts also always began from `initial_state()`, so they could not escape the optimum they exist to escape; a problem can now opt in with a `random_state()` method.
+- **`counting_sort` and `radix_sort` silently ignored the comparator.** Being non-comparison sorts they cannot honor one, but they said nothing about it: given a descending comparator they returned an ascending list. They now raise a `TypeError` naming the limitation, which matters here because this app checks sortedness *using* the problem's comparator and would otherwise blame the student's code.
 
 ## License
 

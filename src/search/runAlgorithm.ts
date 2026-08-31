@@ -147,17 +147,17 @@ export function buildProblemConstructionCode(problem: AuthoredProblem, varName: 
 //     ever found, which `json.dumps` will emit as the non-standard `Infinity`
 //     token — valid to Python's json module, but invalid JSON that would
 //     break JS's strict `JSON.parse` on the other side of the bridge.
-//  4. hill_climbing_search returns its PARTIAL path when it gets stuck without
-//     reaching a goal — a non-None value that "path is not None" wrongly reads
-//     as success. Verified against the library: 6-queens hill climbing that
-//     immediately stalls returns {'path': [()]}, which this used to report as
-//     "path found, length 1, cost 0". Every other algorithm returns None or
-//     {'path': None} on failure, so hill climbing was the one case where the
-//     summary actively lied. Rather than special-casing that one algorithm,
-//     the check is now universal and authoritative: a path counts as found
-//     only if the problem's OWN goal_check accepts its final state. Same
-//     defensive spirit as _polyraptor_sort_summary asking the problem's own
-//     comparator whether the output is sorted.
+//  4. A path counts as found only if the problem's OWN goal_check accepts its
+//     final state. This began as a workaround: hill_climbing_search returned
+//     its PARTIAL path when it stalled, which "path is not None" read as
+//     success, so a 6-queens climb that went nowhere reported "path found,
+//     length 1, cost 0". That is fixed upstream in polysearch and every
+//     algorithm now returns {'path': None} on failure, so the check is no
+//     longer load-bearing for the built-ins -- it is kept as a cheap invariant
+//     (one goal_check call per run) covering custom problems and guarding
+//     against the same class of regression returning. Same defensive spirit as
+//     _polyraptor_sort_summary asking the problem's own comparator whether the
+//     output is actually sorted.
 export const PY_SUMMARY_HELPER = `
 def _polyraptor_sanitize(v):
     if isinstance(v, float) and (v != v or v in (float('inf'), float('-inf'))):
@@ -234,28 +234,19 @@ export async function runSearchAlgorithm(
       kwargs.push(`num_restarts=${n}`);
     }
   }
-  const idCap = Math.max(2, Math.min(MAX_ALLOWED_MAX_DEPTH, Math.floor(options.max_depth ?? DEFAULT_MAX_DEPTH)));
+  // max_depth is a ceiling on the deepening, and polysearch iterates up to it
+  // on its own. The cap is still required: passing None leaves the deepening
+  // genuinely unbounded, which no live UI can afford. (This used to drive the
+  // deepening loop from here, because the library treated max_depth as the
+  // single depth to search at and so never iterated -- fixed upstream in
+  // polysearch, and the loop removed rather than left as a redundant
+  // second implementation of the same idea.)
+  if (algorithm === 'iterative_deepening') {
+    const idCap = Math.max(2, Math.min(MAX_ALLOWED_MAX_DEPTH, Math.floor(options.max_depth ?? DEFAULT_MAX_DEPTH)));
+    kwargs.push(`max_depth=${idCap}`);
+  }
 
-  // iterative_deepening only actually *iterates* when max_depth is None — a
-  // path this app must never take, since it's genuinely unbounded. Handed an
-  // explicit max_depth, the library runs ONE depth-limited DFS at exactly that
-  // depth, so "iterative_deepening" was silently behaving as plain
-  // depth-limited DFS: it returned the first path it stumbled into rather than
-  // the shallowest one. Verified on an open 8x8 maze — max_depth=40 returned a
-  // 40-step path where the optimum is 14, and every other algorithm on the
-  // same maze returned 14. Driving the deepening loop from here restores the
-  // real semantics (shallowest solution wins) while keeping the depth cap that
-  // made the explicit max_depth necessary in the first place. Costs nothing
-  // for the animation either — re-searching from scratch at each depth limit
-  // is exactly what iterative deepening looks like, and the trace now shows it.
-  const runCall =
-    algorithm === 'iterative_deepening'
-      ? `_result = None
-for _depth in range(1, ${idCap} + 1):
-    _result = ${func}(problem, max_depth=_depth, ${kwargs.join(', ')})
-    if _result is not None:
-        break`
-      : `_result = ${func}(problem, ${kwargs.join(', ')})`;
+  const runCall = `_result = ${func}(problem, ${kwargs.join(', ')})`;
 
   const heuristicDef =
     TAKES_HEURISTIC.has(algorithm) && options.heuristic
@@ -281,18 +272,6 @@ json.dumps(_polyraptor_make_summary(problem, _result))
   )) as string;
 
   const summary: RunSummary = JSON.parse(jsonResult);
-
-  // iterative_deepening's returned `inferences` counts outer depth iterations,
-  // not nodes — and in the explicit-max_depth branch it is never incremented
-  // at all, so it always came back as 0. That made iterative deepening look
-  // infinitely cheaper than every other algorithm in search_benchmark_compare.
-  // Its per-event `inferences` field carries the real node count, so the
-  // expand events already in hand are the honest source. (Left alone for every
-  // other algorithm, where the library's own count is correct and means
-  // something slightly different: nodes popped from the frontier.)
-  if (algorithm === 'iterative_deepening') {
-    summary.inferences = collector.entries.filter((e) => e.event.type === 'expand').length;
-  }
 
   return {
     trace_id: traceId,
@@ -333,21 +312,13 @@ export async function benchmarkCompareSearch(
       const moduleName = ALGORITHM_MODULE[algo];
       const kwargs: string[] = ['statistics=True'];
       if (TAKES_HEURISTIC.has(algo) && heuristic) kwargs.push('heuristic=_heuristic');
-      // Deepening loop, for the same reason as runSearchAlgorithm's — a single
-      // depth-limited DFS at max_depth is not iterative deepening, and
-      // reporting its non-optimal path length next to the other algorithms'
-      // optimal ones is exactly the comparison this tool exists to get right.
-      const call =
-        algo === 'iterative_deepening'
-          ? `_r${i} = None
-for _depth in range(1, ${DEFAULT_MAX_DEPTH} + 1):
-    _r${i} = _algo_${i}(problem, max_depth=_depth, ${kwargs.join(', ')})
-    if _r${i} is not None:
-        break`
-          : `_r${i} = _algo_${i}(problem, ${kwargs.join(', ')})`;
+      // Still capped -- an uncapped deepening is unbounded -- but the library
+      // now iterates up to the cap itself, so the path lengths compared here
+      // are the optimal ones rather than whatever a single deep DFS found.
+      if (algo === 'iterative_deepening') kwargs.push(`max_depth=${DEFAULT_MAX_DEPTH}`);
       return `
 from polysearch.algorithms.${moduleName} import ${func} as _algo_${i}
-${call}
+_r${i} = _algo_${i}(problem, ${kwargs.join(', ')})
 _results.append(('${algo}', _polyraptor_make_summary(problem, _r${i})))
 `;
     })
