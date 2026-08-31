@@ -7,7 +7,21 @@ const CELL_SIZE = 28;
 
 // Canvas rendering is kept imperative and outside React's reconciliation —
 // per the plan doc, this is a ref + effect-driven draw loop, not per-cell JSX.
-export function MazeCanvas({ problem, trace }: { problem: AuthoredProblem; trace: SearchTrace | null }) {
+// counterexample: the state a heuristic verification refuted the heuristic on.
+// Drawn last, as a distinct marker rather than a fill, so it stays legible on
+// top of whatever the replay has already coloured that cell -- the whole value
+// of the verification feature is being able to point at ONE cell and say "here
+// is where your heuristic lies", which a fill blending into expanded/frontier
+// colours would undercut.
+export function MazeCanvas({
+  problem,
+  trace,
+  counterexample,
+}: {
+  problem: AuthoredProblem;
+  trace: SearchTrace | null;
+  counterexample?: [number, number] | null;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -73,7 +87,25 @@ export function MazeCanvas({ problem, trace }: { problem: AuthoredProblem; trace
       ctx.strokeRect(c * CELL_SIZE + 2, r * CELL_SIZE + 2, CELL_SIZE - 4, CELL_SIZE - 4);
       ctx.lineWidth = 1;
     }
-  }, [problem, trace, trace?.currentSeq, trace?.entries.length]);
+
+    if (counterexample && counterexample.length === 2) {
+      const [r, c] = counterexample;
+      if (r >= 0 && r < rows && c >= 0 && c < cols) {
+        const x = c * CELL_SIZE;
+        const y = r * CELL_SIZE;
+        ctx.strokeStyle = VIZ.vermillion;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(x + 1.5, y + 1.5, CELL_SIZE - 3, CELL_SIZE - 3);
+        ctx.beginPath();
+        ctx.moveTo(x + 5, y + 5);
+        ctx.lineTo(x + CELL_SIZE - 5, y + CELL_SIZE - 5);
+        ctx.moveTo(x + CELL_SIZE - 5, y + 5);
+        ctx.lineTo(x + 5, y + CELL_SIZE - 5);
+        ctx.stroke();
+        ctx.lineWidth = 1;
+      }
+    }
+  }, [problem, trace, trace?.currentSeq, trace?.entries.length, counterexample]);
 
   return (
     <div className="maze-canvas-wrapper">
@@ -83,6 +115,7 @@ export function MazeCanvas({ problem, trace }: { problem: AuthoredProblem; trace
         <span><i className="swatch" style={{ background: VIZ.yellow }} /> frontier</span>
         <span><i className="swatch" style={{ background: VIZ.vermillion }} /> rejected</span>
         <span><i className="swatch" style={{ background: VIZ.green }} /> solution path</span>
+        {counterexample && <span><i className="swatch swatch-outline" style={{ borderColor: VIZ.vermillion }} /> counterexample</span>}
       </div>
     </div>
   );

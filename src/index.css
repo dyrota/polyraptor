@@ -274,3 +274,90 @@ button, select, input {
 }
 .tool-call-result { color: #8b949e; }
 .tool-call-error { color: #f85149; }
+
+/* ---- Heuristic verification -------------------------------------------- */
+/* The verdict tag carries the meaning, not a green/red wash over the whole
+   card: "proven" and "unrefuted" both have every property passing, and giving
+   them the same colour would teach exactly the wrong lesson -- that finding no
+   counterexample is the same as there being none. So "unrefuted" gets its own
+   cautionary amber-grey treatment, distinct from both. */
+.verify-card {
+  margin-top: 0.75rem;
+  padding: 0.75rem 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+}
+.verify-refuted { border-left-color: var(--error); }
+.verify-proven { border-left-color: var(--ok); }
+.verify-unrefuted { border-left-color: var(--brand); }
+
+.verify-verdict { display: flex; align-items: baseline; gap: 0.6rem; margin-bottom: 0.6rem; }
+.verify-verdict-tag {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.verify-refuted .verify-verdict-tag { background: var(--error-bg); color: var(--error); border: 1px solid var(--error-border); }
+.verify-proven .verify-verdict-tag { background: #12301e; color: var(--ok); border: 1px solid #1d4a2e; }
+.verify-unrefuted .verify-verdict-tag { background: #33260f; color: var(--brand-strong); border: 1px solid #5a4318; }
+.verify-verdict-text { color: var(--text); line-height: 1.45; }
+
+.verify-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.4rem 0;
+  border-top: 1px solid var(--border);
+}
+.verify-row-label { font-family: var(--mono); font-size: 0.78rem; color: var(--text-secondary); }
+.verify-row-status { font-size: 0.75rem; font-weight: 600; }
+.verify-row-ok .verify-row-status { color: var(--ok); }
+.verify-row-bad .verify-row-status { color: var(--error); }
+.verify-row-skip .verify-row-status { color: var(--text-muted); }
+.verify-row-checked { font-size: 0.72rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.verify-row-detail {
+  grid-column: 1 / -1;
+  margin-top: 0.3rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  font-size: 0.82rem;
+}
+
+.verify-meta {
+  margin-top: 0.6rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.maze-legend .swatch-outline { background: transparent; border: 2px solid currentColor; }
+
+/* Secondary action, deliberately quieter than the run/share buttons beside it:
+   discarding your own work should never be the most eye-catching thing in the
+   row. It only exists because persistence does -- once edits survive reloads,
+   a mangled template otherwise has no way back. */
+.search-controls button.link-button {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  font-size: 0.82rem;
+}
+.search-controls button.link-button:hover:not(:disabled) {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+  text-decoration: underline;
+}

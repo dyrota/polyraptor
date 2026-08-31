@@ -3,6 +3,8 @@ import { logged } from '../shared/toolCallLog';
 import { authorPythonSearchProblem, runAlgorithmOnPythonSearchProblem } from '../search/runPythonProblem';
 import { authorPythonSearchAlgorithm, runPythonAlgorithmOnProblem } from '../search/runPythonAlgorithm';
 import { authorPythonSearchHeuristic, runPythonHeuristicOnProblem } from '../search/runPythonHeuristic';
+import { verifyHeuristic, summarizeVerdict } from '../search/verifyHeuristic';
+import { setVerification } from '../search/state';
 import { putProblem, putTrace, getProblem, newProblemId, putAlgorithm, getAlgorithm, newAlgorithmId } from '../search/state';
 import type { SearchAlgorithm } from '../search/types';
 
@@ -31,8 +33,9 @@ export const searchPythonTools: ToolDefinition<never>[] = [
       'apply_operator(operator, state), and cost(state1, state2). Validated immediately (constructed and ' +
       'smoke-tested) -- returns a problem_id usable by search_run_algorithm_on_python_problem. If validation ' +
       'fails, returns a friendly explanation of what to fix (missing method, syntax error, etc.) rather than a ' +
-      'raw error. Heuristic-guided algorithms (a_star/best_first/hill_climbing) fall back to no heuristic (h=0) ' +
-      'against a custom problem, since custom heuristics are a separate, not-yet-available tool.',
+      'raw error. search_run_algorithm_on_python_problem runs it with no heuristic (h=0); to guide ' +
+      'a_star/best_first/hill_climbing against it, author one with search_author_python_heuristic and run it ' +
+      'with search_run_python_heuristic.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -76,8 +79,9 @@ export const searchPythonTools: ToolDefinition<never>[] = [
       'Run a built-in search algorithm against a problem_id that was authored with search_author_python_problem. ' +
       'Runs in the same sandboxed worker as any custom code, since the algorithm calls back into your problem\'s ' +
       'own methods -- a bug there is contained and reported the same way a bug in a full custom algorithm would ' +
-      'be. Returns a trace_id usable by the playback_* tools. No heuristic is applied (h=0) since custom ' +
-      'heuristics against custom problems are not yet available.',
+      'be. Returns a trace_id usable by the playback_* tools. No heuristic is applied here (h=0) — to run one of ' +
+      'the heuristic-guided algorithms with a real heuristic against this problem, use ' +
+      'search_author_python_heuristic + search_run_python_heuristic instead.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -222,6 +226,64 @@ export const searchPythonTools: ToolDefinition<never>[] = [
         const heuristicId = newAlgorithmId('search-heuristic-py');
         putAlgorithm(heuristicId, args.source_code);
         return JSON.stringify({ heuristic_id: heuristicId, valid: true, sample_value: result.sample_value });
+      }
+    ),
+  },
+  {
+    name: 'search_verify_heuristic',
+    description:
+      'Empirically check whether an authored heuristic (from search_author_python_heuristic) is admissible and ' +
+      'consistent for a problem — by exhaustively computing the true remaining cost of every reachable state and ' +
+      'comparing, not by trusting a claim about it. Works on any problem_id, built-in or Python-authored. ' +
+      'Checks three properties, each returning a concrete counterexample rather than a boolean: admissible ' +
+      '(h(n) never exceeds the true remaining cost h*(n)), consistent (h(n) <= cost(n,n\') + h(n\') on every ' +
+      'edge — strictly stronger, and what A* actually needs to avoid re-expanding states), and goal_zero ' +
+      '(h(goal) == 0). ' +
+      'READ THE VERDICT, NOT JUST THE BOOLEANS. verdict is one of: "refuted" — a counterexample was found, which ' +
+      'is trustworthy at any problem size; "proven" — the whole reachable state space was explored and nothing ' +
+      'was found, a real guarantee; "unrefuted" — the state space exceeded the exploration budget, so nothing ' +
+      'was found among the states checked but the heuristic is NOT proven admissible. Do not report "unrefuted" ' +
+      'as admissible. ' +
+      'When refuted, the counterexample names the exact state and the size of the error, which is enough to ' +
+      'revise the heuristic and call this again. The verdict and counterexample also appear on the page the ' +
+      'user is looking at, with the offending state highlighted on the board.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        problem_id: { type: 'string' },
+        heuristic_id: { type: 'string', description: 'From search_author_python_heuristic.' },
+        state_budget: {
+          type: 'integer',
+          description:
+            'Maximum states to explore before giving up on exhaustive ground truth (default 20000). Raising it ' +
+            'can turn an "unrefuted" verdict into "proven" on a large problem, at the cost of a longer run.',
+        },
+      },
+      required: ['problem_id', 'heuristic_id'],
+    },
+    execute: logged(
+      'search_verify_heuristic',
+      async (args: { problem_id: string; heuristic_id: string; state_budget?: number }) => {
+        const problem = getProblem(args.problem_id);
+        const heuristic = getAlgorithm(args.heuristic_id);
+        const result = await verifyHeuristic(problem, heuristic.source_code, args.state_budget);
+        if (!result.ok) {
+          return JSON.stringify({
+            ok: false,
+            kind: result.kind,
+            friendly_error: result.friendly_error,
+            raw_traceback: result.raw_traceback,
+          });
+        }
+        const report = result.report!;
+        setVerification({
+          problem_id: problem.problem_id,
+          heuristic_id: args.heuristic_id,
+          source_code: heuristic.source_code,
+          report,
+          at: Date.now(),
+        });
+        return JSON.stringify({ ok: true, summary: summarizeVerdict(report), ...report });
       }
     ),
   },

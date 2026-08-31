@@ -1,6 +1,7 @@
 import { createStore } from '../shared/store';
 import { storeTrace, type Trace } from '../shared/traceStore';
 import type { AuthoredProblem, SearchTrace } from './types';
+import type { VerificationReport } from './verifyHeuristic';
 
 // Problems and "which trace is currently active" are inherently per-family —
 // two families' panels are never both visible at once, but each needs its
@@ -29,7 +30,10 @@ export function putTrace(trace: SearchTrace) {
 
 export function getProblem(problemId: string): AuthoredProblem {
   const p = problemsStore.getState()[problemId];
-  if (!p) throw new Error(`Unknown problem_id: ${problemId}`);
+  if (!p)
+    throw new Error(
+      `Unknown problem_id: ${problemId}. Call search_get_state to see which problems exist (the human may have created one), or author a new one.`
+    );
   return p;
 }
 
@@ -49,6 +53,41 @@ export function putAlgorithm(id: string, sourceCode: string) {
 
 export function getAlgorithm(id: string): { source_code: string } {
   const a = algorithmsStore.getState()[id];
-  if (!a) throw new Error(`Unknown algorithm_id: ${id}`);
+  if (!a)
+    throw new Error(
+      `Unknown algorithm_id: ${id}. Call search_get_state to list authored algorithm_ids and heuristic_ids.`
+    );
   return a;
+}
+
+// The most recent heuristic verification, held in a store rather than merely
+// returned to the caller so that an agent calling search_verify_heuristic
+// paints the verdict -- and the counterexample state -- onto the board the
+// human is already looking at. A tool that only answered the agent would make
+// this the one feature in the app that DOESN'T demonstrate the shared-live-
+// state thesis, which would be a strange thing for its best feature to do.
+//
+// `problem_id` is carried so a stale verdict from an earlier problem can be
+// suppressed rather than shown against a board it doesn't describe -- the same
+// hazard both panels already guard against for traces.
+export interface StoredVerification {
+  problem_id: string;
+  heuristic_id: string | null;
+  source_code: string;
+  report: VerificationReport;
+  at: number;
+}
+
+export const verificationStore = createStore<StoredVerification | null>(null);
+
+export function setVerification(v: StoredVerification | null) {
+  verificationStore.setState(v);
+  // Bring the verified problem into view, the same way every authoring tool
+  // already activates what it just created. Without this an agent could verify
+  // problem X while the panel still displayed problem Y, and the verdict would
+  // be correctly suppressed as stale -- so the agent would answer and the human
+  // would see nothing at all, which is the exact failure this feature exists to
+  // avoid. (Display still follows an active trace when there is one, per the
+  // precedence established in 5de2f58.)
+  if (v) activeProblemIdStore.setState(v.problem_id);
 }
