@@ -7,9 +7,11 @@ import { authorPythonSortAlgorithm, runPythonAlgorithmOnProblem } from './runPyt
 import { authorPythonSortComparator } from './runPythonComparator';
 import { forceStop } from '../pyodide/workerBridge';
 import { BarArrayCanvas } from './BarArrayCanvas';
+import { ErrorBoundary } from '../shared/ErrorBoundary';
 import { PlaybackBar } from '../playback/PlaybackBar';
 import { PythonEditor } from '../shared/PythonEditor';
 import { CopyShareLinkButton } from '../shared/CopyShareLinkButton';
+import { usePersistedSource } from '../shared/persistentState';
 import type { SharedPayload } from '../shared/shareLink';
 import { SORT_PROBLEM_TEMPLATE, SORT_ALGORITHM_TEMPLATE, SORT_COMPARATOR_TEMPLATE } from './pythonTemplates';
 import type { SortAlgorithm, SortDatasetType, SortTrace } from './types';
@@ -32,8 +34,10 @@ const DATASETS: SortDatasetType[] = ['random_integers', 'nearly_sorted', 'revers
 function parseComparatorValues(text: string): number[] {
   return text
     .split(',')
-    .map((s) => Number(s.trim()))
-    .filter((n) => !Number.isNaN(n));
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .map(Number)
+    .filter((n) => Number.isFinite(n));
 }
 
 // Mirrors SearchPanel.tsx exactly — human buttons and the sort_* WebMCP tools
@@ -62,15 +66,25 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
     if (shared?.kind === 'sort-comparator') return 'comparator';
     return 'problem';
   });
-  const [pythonSource, setPythonSource] = useState(() => (shared?.kind === 'sort-problem' ? shared.source : SORT_PROBLEM_TEMPLATE));
-  const [pythonAlgorithmSource, setPythonAlgorithmSource] = useState(() =>
-    shared?.kind === 'sort-algorithm' ? shared.source : SORT_ALGORITHM_TEMPLATE
+  const [pythonSource, setPythonSource, resetPythonSource] = usePersistedSource(
+    'sort-problem',
+    shared?.kind === 'sort-problem' ? shared.source : undefined,
+    SORT_PROBLEM_TEMPLATE
   );
-  const [pythonComparatorValuesText, setPythonComparatorValuesText] = useState(() =>
-    shared?.kind === 'sort-comparator' && shared.values ? shared.values.join(', ') : '5, 3, 8, 1, 9, 2'
+  const [pythonAlgorithmSource, setPythonAlgorithmSource, resetPythonAlgorithmSource] = usePersistedSource(
+    'sort-algorithm',
+    shared?.kind === 'sort-algorithm' ? shared.source : undefined,
+    SORT_ALGORITHM_TEMPLATE
   );
-  const [pythonComparatorSource, setPythonComparatorSource] = useState(() =>
-    shared?.kind === 'sort-comparator' ? shared.source : SORT_COMPARATOR_TEMPLATE
+  const [pythonComparatorValuesText, setPythonComparatorValuesText] = usePersistedSource(
+    'sort-comparator-values',
+    shared?.kind === 'sort-comparator' && shared.values ? shared.values.join(', ') : undefined,
+    '5, 3, 8, 1, 9, 2'
+  );
+  const [pythonComparatorSource, setPythonComparatorSource, resetPythonComparatorSource] = usePersistedSource(
+    'sort-comparator',
+    shared?.kind === 'sort-comparator' ? shared.source : undefined,
+    SORT_COMPARATOR_TEMPLATE
   );
   const [pythonError, setPythonError] = useState<{ friendly_error: string; raw_traceback?: string } | null>(null);
   const [showRawTraceback, setShowRawTraceback] = useState(false);
@@ -96,16 +110,42 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
   const activeProblem = activeTrace ? problems[activeTrace.problem_id] : activeProblemId ? problems[activeProblemId] : null;
 
   async function handleNewDataset() {
-    const { values } = await authorSortDataset({ dataset_type: datasetType, size });
-    putProblem({ problem_id: newProblemId('sort'), dataset_type: datasetType, size: values.length, values });
+    setPythonError(null);
+    try {
+      const { values } = await authorSortDataset({ dataset_type: datasetType, size });
+      putProblem({ problem_id: newProblemId('sort'), dataset_type: datasetType, size: values.length, values });
+    } catch (err) {
+      // Generating a dataset runs Python, so this fails if Pyodide never
+      // loaded -- previously an unhandled rejection and a button that
+      // appeared to do nothing.
+      setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
   async function handleRun() {
     if (!activeProblem) return;
+    setPythonError(null);
     setRunning(true);
     try {
-      const trace = await runSortAlgorithm(activeProblem, algorithm);
+      // runSortAlgorithm rewraps the problem's `values` in the trusted
+      // ascending _PolyraptorCustomSortProblem. For a python_problem that
+      // silently DISCARDED the student's own comparator: a descending-order
+      // problem got sorted ascending and then reported "sorted correctly",
+      // because the summary's is_sorted check asks the same substituted
+      // comparator. Unlike search's equivalent this never threw, so nothing
+      // surfaced -- it just quietly answered the wrong question. Route custom
+      // problems to the runner that actually re-execs their source.
+      const trace =
+        activeProblem.dataset_type === 'python_problem'
+          ? await (async () => {
+              const result = await runAlgorithmOnPythonSortProblem(activeProblem, algorithm);
+              if (!result.ok) throw new Error(result.friendly_error ?? 'Run failed.');
+              return result.trace!;
+            })()
+          : await runSortAlgorithm(activeProblem, algorithm);
       putTrace(trace);
+    } catch (err) {
+      setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
     } finally {
       setRunning(false);
     }
@@ -139,6 +179,12 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
         return;
       }
       putTrace(result.trace!);
+    } catch (err) {
+      // Not every failure arrives as a validated {ok:false} result -- a bad
+      // values list, a Pyodide load failure, or a JSON parse error on the way
+      // back all throw. Without this these handlers had try/finally and no
+      // catch, so the button just stopped spinning and said nothing.
+      setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
     } finally {
       setPythonRunning(false);
     }
@@ -162,6 +208,12 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
         return;
       }
       putTrace(result.trace!);
+    } catch (err) {
+      // Not every failure arrives as a validated {ok:false} result -- a bad
+      // values list, a Pyodide load failure, or a JSON parse error on the way
+      // back all throw. Without this these handlers had try/finally and no
+      // catch, so the button just stopped spinning and said nothing.
+      setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
     } finally {
       setPythonRunning(false);
     }
@@ -179,6 +231,12 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
     setElapsedMs(0);
     try {
       const values = parseComparatorValues(pythonComparatorValuesText);
+      // Empty or all-garbage input reaches pyIntListLiteral and throws from
+      // inside the author call; catching it here names the actual problem.
+      if (values.length === 0) {
+        setPythonError({ friendly_error: 'Enter at least one number to sort, separated by commas.' });
+        return;
+      }
       const authored = await authorPythonSortComparator(values, pythonComparatorSource);
       if (!authored.valid) {
         setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
@@ -199,6 +257,12 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
         return;
       }
       putTrace(result.trace!);
+    } catch (err) {
+      // Not every failure arrives as a validated {ok:false} result -- a bad
+      // values list, a Pyodide load failure, or a JSON parse error on the way
+      // back all throw. Without this these handlers had try/finally and no
+      // catch, so the button just stopped spinning and said nothing.
+      setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
     } finally {
       setPythonRunning(false);
     }
@@ -265,6 +329,7 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
                 </button>
                 {pythonRunning && <button onClick={handleStop}>Stop</button>}
                 <CopyShareLinkButton payload={{ kind: 'sort-problem', source: pythonSource }} />
+                <button className="link-button" onClick={resetPythonSource} disabled={pythonRunning}>Reset to template</button>
               </div>
             </>
           )}
@@ -278,6 +343,7 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
                 </button>
                 {pythonRunning && <button onClick={handleStop}>Stop</button>}
                 <CopyShareLinkButton payload={{ kind: 'sort-algorithm', source: pythonAlgorithmSource }} />
+                <button className="link-button" onClick={resetPythonAlgorithmSource} disabled={pythonRunning}>Reset to template</button>
                 {!activeProblem && <span className="search-empty">Author or select a problem first.</span>}
               </div>
             </>
@@ -310,22 +376,28 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
                 <CopyShareLinkButton
                   payload={{ kind: 'sort-comparator', source: pythonComparatorSource, values: parseComparatorValues(pythonComparatorValuesText) }}
                 />
+                <button className="link-button" onClick={resetPythonComparatorSource} disabled={pythonRunning}>Reset to template</button>
               </div>
             </>
           )}
 
-          {pythonError && (
-            <div className="python-error">
-              <div className="python-error-message">{pythonError.friendly_error}</div>
-              {pythonError.raw_traceback && (
-                <>
-                  <button className="python-error-toggle" onClick={() => setShowRawTraceback((s) => !s)}>
-                    {showRawTraceback ? 'Hide details' : 'Show details'}
-                  </button>
-                  {showRawTraceback && <pre className="python-error-traceback">{pythonError.raw_traceback}</pre>}
-                </>
-              )}
-            </div>
+        </div>
+      )}
+
+      {/* Outside the mode === 'python' block on purpose: built-in Run/New
+          Dataset can fail too (a rejected custom problem, a Pyodide load
+          failure), and while this lived inside that block those errors had
+          nowhere to render at all. */}
+      {pythonError && (
+        <div className="python-error">
+          <div className="python-error-message">{pythonError.friendly_error}</div>
+          {pythonError.raw_traceback && (
+            <>
+              <button className="python-error-toggle" onClick={() => setShowRawTraceback((s) => !s)}>
+                {showRawTraceback ? 'Hide details' : 'Show details'}
+              </button>
+              {showRawTraceback && <pre className="python-error-traceback">{pythonError.raw_traceback}</pre>}
+            </>
           )}
         </div>
       )}
@@ -337,7 +409,15 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
         </p>
       )}
 
-      {activeProblem && <BarArrayCanvas problem={activeProblem} trace={activeTrace} />}
+      {/* Matches SearchPanel, which has wrapped its canvases since custom code
+          was introduced. A tier-2 custom algorithm's trace is genuinely
+          unpredictable data, and this canvas was the one result surface still
+          rendering it unguarded. */}
+      {activeProblem && (
+        <ErrorBoundary>
+          <BarArrayCanvas problem={activeProblem} trace={activeTrace} />
+        </ErrorBoundary>
+      )}
 
       {activeTrace && (
         <>
