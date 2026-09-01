@@ -359,6 +359,12 @@ export interface ProposeHeuristicResult {
   num_counterexamples: number;
   counterexample: { state: number[]; heuristic_value: number; true_remaining_cost: number } | null;
   entries: SearchTrace['entries'];
+  // The same full RunSummary every other run path produces. This tool used to
+  // hand its trace a hand-built {path_found, cost} pair, which left the panel
+  // rendering "path length , cost 18,  states expanded" with two blanks and
+  // left the solution path unpainted on the maze -- summary.path is what
+  // MazeCanvas colours green at the end of playback.
+  run_summary: RunSummary;
 }
 
 // Verified logic, ported from the empirically-confirmed reference script
@@ -417,6 +423,7 @@ def _true_remaining_cost_map():
 
 problem = MazeProblem(maze, start, goal)
 h = _weighted_heuristic(problem)
+${PY_SUMMARY_HELPER}
 
 # Captured as a side effect of the SAME real run used for the trace/animation
 # -- these are the states the algorithm actually expanded, not a separately
@@ -428,7 +435,12 @@ def _json_bridge(event_dict):
         _expanded.append((event_dict['state'], event_dict.get('h')))
     on_step_placeholder(json.dumps(event_dict))
 
-path = ${func}(problem, heuristic=h, on_step=_json_bridge)
+# statistics=True so this run produces the SAME full summary shape as every
+# other run path (path/path_length/cost/inferences), rather than a hand-built
+# subset the panel then renders with blanks in it.
+_result = ${func}(problem, heuristic=h, statistics=True, on_step=_json_bridge)
+run_summary = _polyraptor_make_summary(problem, _result)
+path = run_summary['path']
 
 true_cost = _true_remaining_cost_map()
 
@@ -454,6 +466,7 @@ summary = {
     'admissible': len(counterexamples) == 0,
     'num_counterexamples': len(counterexamples),
     'counterexample': counterexamples[0] if counterexamples else None,
+    'run_summary': run_summary,
 }
 json.dumps(summary)
 `;

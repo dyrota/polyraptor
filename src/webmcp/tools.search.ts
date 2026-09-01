@@ -221,13 +221,20 @@ export const searchTools: ToolDefinition<never>[] = [
           problem_id: problem.problem_id,
           algorithm: args.algorithm ?? 'a_star',
           entries: result.entries,
-          summary: { path_found: result.path_found, cost: result.heuristic_cost ?? undefined },
+          // The run's own full summary, not a hand-built subset: the panel
+          // reads path_length/inferences from here, and MazeCanvas paints
+          // summary.path green at the end of playback.
+          summary: result.run_summary,
           currentSeq: -1,
           playing: false,
           speed: 1,
         });
-        const { entries: _entries, ...summary } = result;
-        return JSON.stringify(summary);
+        // run_summary is dropped from the tool's own reply -- it repeats
+        // path_found/cost and carries a full coordinate path this caller
+        // already has better ways to ask for (playback_*, search_get_state).
+        // inferences is the one genuinely new field, so it is lifted out.
+        const { entries: _entries, run_summary, ...summary } = result;
+        return JSON.stringify({ ...summary, inferences: run_summary.inferences ?? null });
       }
     ),
   },

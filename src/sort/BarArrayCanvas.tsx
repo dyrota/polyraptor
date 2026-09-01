@@ -47,7 +47,12 @@ export function BarArrayCanvas({
 
     const n = problem.values.length;
     const width = Math.max(480, n * 6);
-    const auxBuffers = trace ? Object.keys(deriveSortVisualState(problem.values, trace.entries, trace.currentSeq).auxiliary) : [];
+    // Derived ONCE per draw. This used to be called a second time further down
+    // for `visual`, so every frame replayed the whole trace twice -- and a
+    // trace is routinely tens of thousands of events (bubble sort on 300
+    // elements is ~45,000), replayed from seq 0 on each step of the animation.
+    const visual = trace ? deriveSortVisualState(problem.values, trace.entries, trace.currentSeq) : null;
+    const auxBuffers = visual ? Object.keys(visual.auxiliary) : [];
     // Role letters are drawn above the bars, so they need headroom that the
     // plot would otherwise use.
     const ceMarks = counterexample?.length ? counterexample : null;
@@ -60,7 +65,6 @@ export function BarArrayCanvas({
     ctx.fillRect(0, 0, width, height);
 
     const atEnd = trace ? trace.currentSeq >= trace.entries.length - 1 : false;
-    const visual = trace ? deriveSortVisualState(problem.values, trace.entries, trace.currentSeq) : null;
     // At the very end, prefer the algorithm's own reported final_values over
     // the replayed array — radix_sort's writes never touch the 'main' buffer
     // (see deriveVisualState's comment), so replay alone would never show it
