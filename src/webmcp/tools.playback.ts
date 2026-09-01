@@ -1,5 +1,5 @@
 import type { ToolDefinition } from './registerTool';
-import { logged } from '../shared/toolCallLog';
+import { logged } from '../shared/activityLog';
 import { play, pause, step, jumpTo, getPlaybackState } from '../playback/playbackEngine';
 
 // Shared by search + sort traces, keyed by trace_id — pure client-side

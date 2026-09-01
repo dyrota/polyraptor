@@ -1,5 +1,5 @@
 import type { ToolDefinition } from './registerTool';
-import { logged } from '../shared/toolCallLog';
+import { logged } from '../shared/activityLog';
 import { tracesStore } from '../shared/traceStore';
 import * as searchState from '../search/state';
 import * as sortState from '../sort/state';

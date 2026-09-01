@@ -1,5 +1,5 @@
 import type { ToolDefinition } from './registerTool';
-import { logged } from '../shared/toolCallLog';
+import { logged } from '../shared/activityLog';
 import { generateMaze } from '../search/mazeGenerator';
 import { putProblem, putTrace, getProblem, newProblemId } from '../search/state';
 import { runSearchAlgorithm, benchmarkCompareSearch, proposeHeuristic } from '../search/runAlgorithm';

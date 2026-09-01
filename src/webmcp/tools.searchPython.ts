@@ -1,5 +1,5 @@
 import type { ToolDefinition } from './registerTool';
-import { logged } from '../shared/toolCallLog';
+import { logged } from '../shared/activityLog';
 import { authorPythonSearchProblem, runAlgorithmOnPythonSearchProblem } from '../search/runPythonProblem';
 import { authorPythonSearchAlgorithm, runPythonAlgorithmOnProblem } from '../search/runPythonAlgorithm';
 import { authorPythonSearchHeuristic, runPythonHeuristicOnProblem } from '../search/runPythonHeuristic';

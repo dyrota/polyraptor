@@ -14,6 +14,7 @@ import { PlaybackBar } from '../playback/PlaybackBar';
 import { PythonEditor } from '../shared/PythonEditor';
 import { CopyShareLinkButton } from '../shared/CopyShareLinkButton';
 import { usePersistedSource } from '../shared/persistentState';
+import { humanAction } from '../shared/activityLog';
 import type { SharedPayload } from '../shared/shareLink';
 import { SORT_PROBLEM_TEMPLATE, SORT_ALGORITHM_TEMPLATE, SORT_COMPARATOR_TEMPLATE } from './pythonTemplates';
 import type { SortAlgorithm, SortDatasetType, SortTrace } from './types';
@@ -118,8 +119,10 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
   async function handleNewDataset() {
     setPythonError(null);
     try {
-      const { values } = await authorSortDataset({ dataset_type: datasetType, size });
-      putProblem({ problem_id: newProblemId('sort'), dataset_type: datasetType, size: values.length, values });
+      await humanAction('New Dataset', { dataset_type: datasetType, size }, async () => {
+        const { values } = await authorSortDataset({ dataset_type: datasetType, size });
+        putProblem({ problem_id: newProblemId('sort'), dataset_type: datasetType, size: values.length, values });
+      });
     } catch (err) {
       // Generating a dataset runs Python, so this fails if Pyodide never
       // loaded -- previously an unhandled rejection and a button that
@@ -141,15 +144,17 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
       // comparator. Unlike search's equivalent this never threw, so nothing
       // surfaced -- it just quietly answered the wrong question. Route custom
       // problems to the runner that actually re-execs their source.
-      const trace =
-        activeProblem.dataset_type === 'python_problem'
-          ? await (async () => {
-              const result = await runAlgorithmOnPythonSortProblem(activeProblem, algorithm);
-              if (!result.ok) throw new Error(result.friendly_error ?? 'Run failed.');
-              return result.trace!;
-            })()
-          : await runSortAlgorithm(activeProblem, algorithm);
-      putTrace(trace);
+      await humanAction('Run', { algorithm, problem_id: activeProblem.problem_id }, async () => {
+        const trace =
+          activeProblem.dataset_type === 'python_problem'
+            ? await (async () => {
+                const result = await runAlgorithmOnPythonSortProblem(activeProblem, algorithm);
+                if (!result.ok) throw new Error(result.friendly_error ?? 'Run failed.');
+                return result.trace!;
+              })()
+            : await runSortAlgorithm(activeProblem, algorithm);
+        putTrace(trace);
+      });
     } catch (err) {
       setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -165,26 +170,33 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
     setPythonRunning(true);
     setElapsedMs(0);
     try {
-      const authored = await authorPythonSortProblem(pythonSource);
-      if (!authored.valid) {
-        setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
-        return;
-      }
-      const problemId = newProblemId('sort-py');
-      const problem = {
-        problem_id: problemId,
-        dataset_type: 'python_problem' as const,
-        size: authored.size!,
-        values: authored.values!,
-        source_code: pythonSource,
-      };
-      putProblem(problem);
-      const result = await runAlgorithmOnPythonSortProblem(problem, algorithm);
-      if (!result.ok) {
-        setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
-        return;
-      }
-      putTrace(result.trace!);
+      // Returning the failed result rather than bare `return` is what lets
+      // humanAction log it as an error: these paths fail by returning
+      // {valid:false}/{ok:false}, not by throwing, and a silent `return` would
+      // be recorded as a success.
+      await humanAction('Validate & Run (Problem)', { algorithm }, async () => {
+        const authored = await authorPythonSortProblem(pythonSource);
+        if (!authored.valid) {
+          setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
+          return authored;
+        }
+        const problemId = newProblemId('sort-py');
+        const problem = {
+          problem_id: problemId,
+          dataset_type: 'python_problem' as const,
+          size: authored.size!,
+          values: authored.values!,
+          source_code: pythonSource,
+        };
+        putProblem(problem);
+        const result = await runAlgorithmOnPythonSortProblem(problem, algorithm);
+        if (!result.ok) {
+          setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
+          return result;
+        }
+        putTrace(result.trace!);
+        return result;
+      });
     } catch (err) {
       // Not every failure arrives as a validated {ok:false} result -- a bad
       // values list, a Pyodide load failure, or a JSON parse error on the way
@@ -202,18 +214,21 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
     setPythonRunning(true);
     setElapsedMs(0);
     try {
-      const authored = await authorPythonSortAlgorithm(pythonAlgorithmSource);
-      if (!authored.valid) {
-        setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
-        return;
-      }
-      const result = await runPythonAlgorithmOnProblem(activeProblem, pythonAlgorithmSource);
-      if (!result.ok) {
-        setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
-        if (result.trace) putTrace(result.trace);
-        return;
-      }
-      putTrace(result.trace!);
+      await humanAction('Validate & Run (Algorithm)', { problem_id: activeProblem.problem_id }, async () => {
+        const authored = await authorPythonSortAlgorithm(pythonAlgorithmSource);
+        if (!authored.valid) {
+          setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
+          return authored;
+        }
+        const result = await runPythonAlgorithmOnProblem(activeProblem, pythonAlgorithmSource);
+        if (!result.ok) {
+          setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
+          if (result.trace) putTrace(result.trace);
+          return result;
+        }
+        putTrace(result.trace!);
+        return result;
+      });
     } catch (err) {
       // Not every failure arrives as a validated {ok:false} result -- a bad
       // values list, a Pyodide load failure, or a JSON parse error on the way
@@ -243,26 +258,29 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
         setPythonError({ friendly_error: 'Enter at least one number to sort, separated by commas.' });
         return;
       }
-      const authored = await authorPythonSortComparator(values, pythonComparatorSource);
-      if (!authored.valid) {
-        setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
-        return;
-      }
-      const problemId = newProblemId('sort-cmp-py');
-      const problem = {
-        problem_id: problemId,
-        dataset_type: 'python_problem' as const,
-        size: authored.size!,
-        values: authored.values!,
-        source_code: authored.synthetic_source!,
-      };
-      putProblem(problem);
-      const result = await runAlgorithmOnPythonSortProblem(problem, algorithm);
-      if (!result.ok) {
-        setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
-        return;
-      }
-      putTrace(result.trace!);
+      await humanAction('Validate & Run (Comparator)', { algorithm, value_count: values.length }, async () => {
+        const authored = await authorPythonSortComparator(values, pythonComparatorSource);
+        if (!authored.valid) {
+          setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
+          return authored;
+        }
+        const problemId = newProblemId('sort-cmp-py');
+        const problem = {
+          problem_id: problemId,
+          dataset_type: 'python_problem' as const,
+          size: authored.size!,
+          values: authored.values!,
+          source_code: authored.synthetic_source!,
+        };
+        putProblem(problem);
+        const result = await runAlgorithmOnPythonSortProblem(problem, algorithm);
+        if (!result.ok) {
+          setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
+          return result;
+        }
+        putTrace(result.trace!);
+        return result;
+      });
     } catch (err) {
       // Not every failure arrives as a validated {ok:false} result -- a bad
       // values list, a Pyodide load failure, or a JSON parse error on the way
@@ -291,12 +309,15 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
     setPythonRunning(true);
     setElapsedMs(0);
     try {
-      const result = await verifyComparator(activeProblem);
-      if (!result.ok) {
-        setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
-        return;
-      }
-      setVerification({ problem_id: activeProblem.problem_id, report: result.report!, at: Date.now() });
+      await humanAction('Verify comparator', { problem_id: activeProblem.problem_id }, async () => {
+        const result = await verifyComparator(activeProblem);
+        if (!result.ok) {
+          setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
+          return result;
+        }
+        setVerification({ problem_id: activeProblem.problem_id, report: result.report!, at: Date.now() });
+        return result;
+      });
     } catch (err) {
       setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -319,25 +340,28 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
         setPythonError({ friendly_error: 'Enter at least one number to sort, separated by commas.' });
         return;
       }
-      const authored = await authorPythonSortComparator(values, pythonComparatorSource);
-      if (!authored.valid) {
-        setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
-        return;
-      }
-      const problem = {
-        problem_id: newProblemId('sort-cmp-py'),
-        dataset_type: 'python_problem' as const,
-        size: authored.size!,
-        values: authored.values!,
-        source_code: authored.synthetic_source!,
-      };
-      putProblem(problem);
-      const result = await verifyComparator(problem);
-      if (!result.ok) {
-        setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
-        return;
-      }
-      setVerification({ problem_id: problem.problem_id, report: result.report!, at: Date.now() });
+      await humanAction('Validate & Verify', { value_count: values.length }, async () => {
+        const authored = await authorPythonSortComparator(values, pythonComparatorSource);
+        if (!authored.valid) {
+          setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
+          return authored;
+        }
+        const problem = {
+          problem_id: newProblemId('sort-cmp-py'),
+          dataset_type: 'python_problem' as const,
+          size: authored.size!,
+          values: authored.values!,
+          source_code: authored.synthetic_source!,
+        };
+        putProblem(problem);
+        const result = await verifyComparator(problem);
+        if (!result.ok) {
+          setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
+          return result;
+        }
+        setVerification({ problem_id: problem.problem_id, report: result.report!, at: Date.now() });
+        return result;
+      });
     } catch (err) {
       setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
     } finally {

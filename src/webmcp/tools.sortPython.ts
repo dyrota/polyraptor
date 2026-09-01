@@ -1,5 +1,5 @@
 import type { ToolDefinition } from './registerTool';
-import { logged } from '../shared/toolCallLog';
+import { logged } from '../shared/activityLog';
 import { authorPythonSortProblem, runAlgorithmOnPythonSortProblem } from '../sort/runPythonProblem';
 import { authorPythonSortAlgorithm, runPythonAlgorithmOnProblem } from '../sort/runPythonAlgorithm';
 import { authorPythonSortComparator } from '../sort/runPythonComparator';

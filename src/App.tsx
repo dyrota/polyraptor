@@ -3,7 +3,7 @@ import { initWebMcp } from './webmcp';
 import { getPyodide } from './pyodide/bridge';
 import { SearchPanel } from './search/SearchPanel';
 import { SortPanel } from './sort/SortPanel';
-import { ToolCallLog } from './shared/ToolCallLog';
+import { ActivityLog } from './shared/ActivityLog';
 import { decodeSharedFromLocation, SHARE_KIND_TAB } from './shared/shareLink';
 
 type Tab = 'search' | 'sort';
@@ -64,7 +64,7 @@ export default function App() {
           {tab === 'sort' && <SortPanel sharedPayload={sharedPayload} />}
         </div>
         <aside className="app-sidebar">
-          <ToolCallLog />
+          <ActivityLog />
         </aside>
       </main>
     </div>

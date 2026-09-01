@@ -247,7 +247,12 @@ button, select, input {
 .mc-boat { position: absolute; bottom: 4px; right: 8px; font-size: 1.3rem; }
 .mc-river { padding: 0 0.5rem; color: #58a6ff; font-weight: 600; writing-mode: vertical-rl; }
 
-.tool-call-log {
+/* ---- Activity log ------------------------------------------------------- */
+/* One timeline for both actors. The agent/human distinction is carried by a
+   badge and a left border rather than by splitting into two lists, because
+   the interleaving IS the content -- two separate lists would show the same
+   events and lose the only thing this panel proves. */
+.activity-log {
   background: var(--bg-header);
   color: #c9d1d9;
   border: 1px solid var(--border);
@@ -256,24 +261,58 @@ button, select, input {
   max-height: 70vh;
   overflow-y: auto;
 }
-.tool-call-log h3 { margin-top: 0; font-size: 0.95rem; color: var(--text); }
-.tool-call-log ul { list-style: none; margin: 0; padding: 0; }
-.tool-call-log-empty { font-size: 0.85rem; color: #8b949e; }
-.tool-call-entry { border-bottom: 1px solid #21262d; padding: 0.5rem 0; }
-.tool-call-header { display: flex; justify-content: space-between; font-size: 0.85rem; }
-.tool-call-name { font-weight: 600; color: #79c0ff; font-family: var(--mono); }
-.status-ok .tool-call-status { color: #3fb950; }
-.status-error .tool-call-status { color: #f85149; }
-.status-running .tool-call-status { color: #d29922; }
-.tool-call-args, .tool-call-result, .tool-call-error {
+.activity-log h3 { margin-top: 0; margin-bottom: 0.6rem; font-size: 0.95rem; color: var(--text); }
+.activity-log ul { list-style: none; margin: 0; padding: 0; }
+.activity-log-empty { font-size: 0.85rem; color: #8b949e; line-height: 1.5; }
+
+.activity-filter { display: flex; gap: 0.3rem; margin-bottom: 0.7rem; }
+.activity-filter button {
+  font-size: 0.72rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.activity-filter button:hover { color: var(--text); border-color: var(--text-muted); }
+.activity-filter button.active { background: var(--border); color: var(--text); border-color: var(--text-muted); }
+
+.activity-entry {
+  border-bottom: 1px solid #21262d;
+  padding: 0.5rem 0 0.5rem 0.55rem;
+  border-left: 2px solid transparent;
+}
+.activity-entry.actor-human { border-left-color: var(--brand); }
+.activity-entry.actor-agent { border-left-color: #388bfd; }
+.activity-header { display: flex; align-items: baseline; gap: 0.45rem; font-size: 0.85rem; }
+.activity-actor {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  padding: 0.08rem 0.32rem;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.actor-human .activity-actor { background: #33260f; color: var(--brand-strong); }
+.actor-agent .activity-actor { background: #0d2d4f; color: #79c0ff; }
+.activity-name { font-weight: 600; color: #79c0ff; font-family: var(--mono); word-break: break-word; }
+.actor-human .activity-name { color: var(--text); font-family: inherit; }
+.activity-status { margin-left: auto; flex-shrink: 0; font-size: 0.72rem; }
+.status-ok .activity-status { color: #3fb950; }
+.status-error .activity-status { color: #f85149; }
+.status-running .activity-status { color: #d29922; }
+.activity-detail, .activity-result, .activity-error {
   margin: 0.25rem 0 0;
   font-size: 0.75rem;
   font-family: var(--mono);
   white-space: pre-wrap;
   word-break: break-word;
 }
-.tool-call-result { color: #8b949e; }
-.tool-call-error { color: #f85149; }
+.activity-result { color: #8b949e; }
+.activity-error { color: #f85149; }
 
 /* ---- Heuristic verification -------------------------------------------- */
 /* The verdict tag carries the meaning, not a green/red wash over the whole

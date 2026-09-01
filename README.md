@@ -10,7 +10,7 @@ A regular MCP server hitting a REST API could expose "run this algorithm" as a t
 
 - **The agent's tool calls mutate the same live page you're looking at.** There's no polling, no separate view to refresh — when the agent calls `search_run_algorithm`, the maze on your screen updates immediately, because the tool *is* a function running in this tab.
 - **The algorithms genuinely execute.** Search and sort run real Python — [`polysearch`](https://github.com/dyrota/polysearch) and [`polysort`](https://github.com/dyrota/polysort), two libraries with their own test suites — compiled to WebAssembly via [Pyodide](https://pyodide.org) and running entirely client-side. No backend, no server executing anyone's code.
-- **A human and an agent can touch the same state at the same time, in both directions.** Every panel has manual buttons (New Maze, New Dataset, Run, Verify) wired to the *identical* store the WebMCP tools read and write, and `search_get_state`/`sort_get_state` let an agent discover state a human created by clicking. A human can be mid-interaction while an agent calls a tool, and both see the same result immediately — that's the actual thesis of the project, not a demo trick.
+- **A human and an agent can touch the same state at the same time, in both directions.** Every panel has manual buttons (New Maze, New Dataset, Run, Verify) wired to the *identical* store the WebMCP tools read and write, and `search_get_state`/`sort_get_state` let an agent discover state a human created by clicking. A human can be mid-interaction while an agent calls a tool, and both see the same result immediately — that's the actual thesis of the project, not a demo trick. The sidebar shows both sides on **one interleaved timeline**, so "the agent did this, then you did that, then the agent did this" is something you watch happen rather than something this README asserts.
 
 ## Two families
 
@@ -97,6 +97,7 @@ node scripts/e2e-smoke.mjs http://localhost:5173/
 | `e2e-share-link-smoke` | shareable links round-trip |
 | `e2e-verify-heuristic-smoke` | heuristic verification, all three verdicts |
 | `e2e-verify-comparator-smoke` | comparator verification, all five laws and all three verdicts |
+| `e2e-activity-log-smoke` | human and agent actions interleaved on one timeline |
 | `e2e-state-discovery-smoke` | an agent seeing state a human created |
 | `e2e-persistence-smoke` | reload survival, and storage being unavailable |
 | `e2e-regression-smoke` | specific bugs found in audit, kept fixed |
@@ -104,7 +105,7 @@ node scripts/e2e-smoke.mjs http://localhost:5173/
 ## Roadmap
 
 - **`polyevolve`** as a proper Python package — would complete a `polysearch` / `polysort` / `polyevolve` trilogy sharing one instrumentation convention. A JS-native genetic-algorithm family (Matter.js creatures) shipped and was then removed in `0f5adcd` precisely so it could come back this way; the working prototype is preserved at the `evolve-js-prototype` tag.
-- **Interleaved human/agent activity log** — the sidebar currently shows only the agent's tool calls, so a human's own clicks are invisible in the one place the shared-state thesis would be most legible.
+- **Comparator verification counterexamples on the bars** — search renders its refutation on the board (the exact cell, and by how much). Sort reports its counterexample in words but does not yet highlight the offending values in the bar canvas, which is the same "look at it, don't just read it" affordance.
 
 ## Vendored library changes
 

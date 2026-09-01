@@ -1,5 +1,5 @@
 import type { ToolDefinition } from './registerTool';
-import { logged } from '../shared/toolCallLog';
+import { logged } from '../shared/activityLog';
 import { authorSortDataset, runSortAlgorithm, benchmarkCompareSort } from '../sort/runAlgorithm';
 import { putProblem, putTrace, getProblem, newProblemId } from '../sort/state';
 import type { SortAlgorithm, SortDatasetType } from '../sort/types';
