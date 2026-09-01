@@ -83,7 +83,17 @@ npm run dev
 
 Open the URL it prints in Chrome with `chrome://flags/#enable-webmcp-testing` enabled, or in ChatGPT's in-app browser.
 
-`scripts/e2e-*.mjs` are Playwright-based smoke tests driving real Chrome, real WebMCP tool calls, and real Pyodide. They need a running dev server, so start one first and pass its URL:
+`scripts/e2e-*.mjs` are Playwright-based smoke tests driving real Chrome, real WebMCP tool calls, and real Pyodide.
+
+```
+npm run e2e                     # every suite, ~45s
+npm run e2e -- --only verify    # just the suites matching "verify"
+npm run e2e -- --serial         # one at a time, for readable debugging
+```
+
+`npm run e2e` starts its own dev server and stops it afterwards. Suites run four at a time, which is safe because the app is entirely client-side — each suite drives its own browser with its own private copy of the state, and the only shared resource is a static file server. Output is buffered per suite so concurrency never interleaves two suites' lines, and a passing suite's chatter is suppressed.
+
+Any suite can also be run alone against a server you already have:
 
 ```
 node scripts/e2e-smoke.mjs http://localhost:5173/

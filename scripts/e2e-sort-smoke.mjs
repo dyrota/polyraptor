@@ -2,9 +2,11 @@
 // one algorithm from each on_step-shape bucket, benchmark_compare, and
 // playback — plus a re-check that search still works after the shared
 // trace-store/collector refactor.
+//   node scripts/e2e-sort-smoke.mjs http://localhost:5173/
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 
+const targetUrl = process.argv[2] || 'http://localhost:5173/';
 const SHOT_DIR = new URL('../.smoke-shots/', import.meta.url).pathname;
 fs.mkdirSync(SHOT_DIR, { recursive: true });
 
@@ -16,7 +18,7 @@ const page = await browser.newPage();
 const pageErrors = [];
 page.on('pageerror', (err) => pageErrors.push(err.stack || String(err)));
 
-await page.goto('http://localhost:5173/', { waitUntil: 'load' });
+await page.goto(targetUrl, { waitUntil: 'load' });
 await page.waitForTimeout(3500);
 
 const result = await page.evaluate(async () => {
