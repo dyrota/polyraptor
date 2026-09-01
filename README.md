@@ -40,7 +40,7 @@ Reporting `unrefuted` as "admissible" would be a lie, and the gap between "I fou
 ## Architecture
 
 - **Zero backend.** Static Vite + React + TypeScript app. Everything — including running real Python — happens in your browser tab.
-- **Vendored, instrumented wheels.** `polysearch`/`polysort` ship in `public/wheels/` as locally-built wheels with an additive `on_step(event)` callback threaded through every algorithm (opt-in, `None` by default, zero behavior change when omitted) — that callback is what makes every step of a run animatable.
+- **Vendored, instrumented wheels.** `polysearch`/`polysort` ship in `public/wheels/`, built from the upstream repos and carrying an additive `on_step(event)` callback threaded through every algorithm (opt-in, `None` by default, zero behavior change when omitted) — that callback is what makes every step of a run animatable. Vendoring is the architecture rather than a stopgap: `micropip` resolves an install URL from inside Pyodide's virtual filesystem, so the wheel has to sit at an absolute same-origin URL, and serving it from `public/` is what lets a static app with no backend install a real Python package at runtime.
 - **JSON-string bridge, not raw dicts.** Every event crossing from Python to JS is `json.dumps()`'d on the Python side and `JSON.parse()`'d on the JS side, deliberately avoiding Pyodide's PyProxy/dict-marshalling behavior, which turned out not to match its own documentation in the version this app uses. Values are sanitized on the way out (`pyodide/pySafeJson.ts`): Python emits bare `Infinity`/`NaN` tokens that JS's `JSON.parse` rejects outright, and `float('inf')` is the idiomatic way to write "unreachable" in a heuristic.
 - **Two execution paths.** Built-in algorithms on built-in problems run on the main thread. Anything touching authored code — including a built-in algorithm on a custom problem, since it calls back into that problem's methods — runs in the worker behind a timeout.
 - **Run once, replay client-side.** Algorithms run to completion once (they're fast — teaching-scale inputs, sub-second), capturing a full event trace; `playback_play`/`step`/`jump_to` then scrub through that trace with zero further Python calls, shared across the search and sort families.
@@ -84,11 +84,22 @@ node scripts/e2e-smoke.mjs http://localhost:5173/
 
 ## Vendored library changes
 
-`public/wheels/` holds locally-built wheels, so the two libraries and this app move together. Both have `on_step` instrumentation that upstream did not have, and three bugs found while building this app were fixed at the source rather than worked around here:
+Building this app surfaced real bugs in both libraries. They were fixed at the source rather than worked around here, and both changes are now merged upstream — [polysearch#1](https://github.com/dyrota/polysearch/pull/1) and [polysort#1](https://github.com/dyrota/polysort/pull/1) — along with the `on_step` instrumentation the animation layer depends on:
 
 - **`iterative_deepening` never iterated.** It treated `max_depth` as the depth to search *at* rather than a ceiling, so it ran one depth-limited DFS and returned whatever it found — a 57-step path on an open 8×8 grid where the optimum is 15. It also reported `inferences: 0` on that branch, making it look free next to every other algorithm.
 - **`hill_climbing` reported stalls as solutions**, returning its partial path when it hit a local optimum. Worse, `random_restart` selected on lowest cost, so a climb that stalled immediately (cost 0) beat one that reached the goal — it reliably picked the *worst* attempt. Restarts also always began from `initial_state()`, so they could not escape the optimum they exist to escape; a problem can now opt in with a `random_state()` method.
 - **`counting_sort` and `radix_sort` silently ignored the comparator.** Being non-comparison sorts they cannot honor one, but they said nothing about it: given a descending comparator they returned an ascending list. They now raise a `TypeError` naming the limitation, which matters here because this app checks sortedness *using* the problem's comparator and would otherwise blame the student's code.
+
+### Rebuilding the wheels
+
+Neither library is on PyPI yet, and a released version wouldn't change the vendoring — the wheel still has to be served same-origin for `micropip` to install it. What a vendored `.whl` *does* lose is provenance: it's an opaque binary with no record of which commit produced it. `public/wheels/MANIFEST.json` closes that gap, and `scripts/build-wheels.mjs` regenerates both:
+
+```
+npm run wheels          # rebuild both wheels + manifest from local checkouts
+npm run wheels:check    # verify the vendored wheels match those checkouts
+```
+
+Checkouts default to `../polysearch` and `../polysort`; override with `POLYSEARCH_DIR` / `POLYSORT_DIR`. Building from a dirty tree is refused unless you pass `--allow-dirty`, so a wheel always maps to a commit that exists. `wheels:check` compares module contents rather than file hashes — wheels are zip archives carrying mtimes, so two builds of identical source are never byte-identical.
 
 ## License
 
