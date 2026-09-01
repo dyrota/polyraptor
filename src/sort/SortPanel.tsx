@@ -5,7 +5,7 @@ import { authorSortDataset, runSortAlgorithm } from './runAlgorithm';
 import { authorPythonSortProblem, runAlgorithmOnPythonSortProblem } from './runPythonProblem';
 import { authorPythonSortAlgorithm, runPythonAlgorithmOnProblem } from './runPythonAlgorithm';
 import { authorPythonSortComparator } from './runPythonComparator';
-import { verifyComparator } from './verifyComparator';
+import { verifyComparator, counterexampleMarks } from './verifyComparator';
 import { ComparatorVerificationCard } from './ComparatorVerificationCard';
 import { forceStop } from '../pyodide/workerBridge';
 import { BarArrayCanvas } from './BarArrayCanvas';
@@ -115,6 +115,12 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
   // authored one, which would otherwise show a mismatched array. Falls back
   // to the last-authored problem when nothing has been run yet.
   const activeProblem = activeTrace ? problems[activeTrace.problem_id] : activeProblemId ? problems[activeProblemId] : null;
+  // Only mark the bars when the verdict actually describes the dataset on
+  // screen -- the same staleness guard the card below it uses.
+  const liveCounterexample =
+    verification && activeProblem && verification.problem_id === activeProblem.problem_id
+      ? counterexampleMarks(verification.report)
+      : null;
 
   async function handleNewDataset() {
     setPythonError(null);
@@ -530,7 +536,7 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
           rendering it unguarded. */}
       {activeProblem && (
         <ErrorBoundary>
-          <BarArrayCanvas problem={activeProblem} trace={activeTrace} />
+          <BarArrayCanvas problem={activeProblem} trace={activeTrace} counterexample={liveCounterexample} />
         </ErrorBoundary>
       )}
 

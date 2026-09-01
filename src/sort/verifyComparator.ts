@@ -350,6 +350,30 @@ json.dumps(_polyraptor_json_safe(_report))
   return { ok: true, report: JSON.parse(result.result ?? '{}') as ComparatorVerificationReport };
 }
 
+// The values to mark on the bar canvas, tagged with the letters the card uses
+// for them. Picks the FIRST violated law in the card's own row order rather
+// than the most visually interesting one, so what is outlined always
+// corresponds to the first red row a reader's eye lands on -- cherry-picking
+// the 3-cycle because it draws better would leave the highlight unexplained by
+// the row above it.
+export function counterexampleMarks(report: ComparatorVerificationReport): { value: number; role: string }[] {
+  const pair = (ce: { a: number; b: number }) => [
+    { value: ce.a, role: 'a' },
+    { value: ce.b, role: 'b' },
+  ];
+  const triple = (ce: TransitivityCounterexample) => [
+    { value: ce.a, role: 'a' },
+    { value: ce.b, role: 'b' },
+    { value: ce.c, role: 'c' },
+  ];
+  if (report.total.counterexample) return pair(report.total.counterexample);
+  if (report.deterministic.counterexample) return pair(report.deterministic.counterexample);
+  if (report.antisymmetric.counterexample) return pair(report.antisymmetric.counterexample);
+  if (report.transitive.counterexample) return triple(report.transitive.counterexample);
+  if (report.equivalence_transitive.counterexample) return triple(report.equivalence_transitive.counterexample);
+  return [];
+}
+
 // The one sentence to lead with. Kept next to the types it reads so the UI and
 // the tool description can never drift into describing the same verdict
 // differently -- the same reason search's summarizeVerdict lives beside its

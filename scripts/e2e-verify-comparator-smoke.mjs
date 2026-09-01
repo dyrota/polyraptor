@@ -179,6 +179,10 @@ check('a verification card is rendered', cardText.length > 0, `len=${cardText.le
 check('card shows the refuted verdict', /refuted/i.test(cardText), cardText.slice(0, 160));
 check('card explains the cycle in words', /cycle|transitive/i.test(cardText), cardText.slice(0, 400));
 check('card reports how many triples were checked', /triples/i.test(cardText), cardText.slice(0, 400));
+// The refutation is rendered on the bars too, the way search renders its own
+// on the board -- a legend entry only appears when marks were drawn.
+const legend = await page.locator('.bar-canvas-wrapper .maze-legend').innerText().catch(() => '');
+check('the bar canvas marks the counterexample', /counterexample/i.test(legend), legend.replace(/\n/g, ' ').slice(0, 200));
 await page.screenshot({ path: SHOT_DIR + 'verify-comparator-refuted.png', fullPage: true });
 
 // A verdict must survive a leftover trace from a DIFFERENT problem. The panel

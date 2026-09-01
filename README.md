@@ -61,6 +61,8 @@ The last one is the trap worth knowing: a tolerance comparator like `0 if abs(a 
 
 `proven` here is stronger than search's in one way and weaker in another, and the summary says both: a sort only ever compares elements of its own dataset, so a comparator proven over those values is genuinely enough to make sorting *this* dataset well-defined — but it says nothing about values not in it.
 
+As on the search side, a refutation is something you can look at: the offending values are outlined on the bar canvas and labelled with the same `a`/`b`/`c` the verdict uses, so a three-way cycle reads off the bars directly.
+
 ## Architecture
 
 - **Zero backend.** Static Vite + React + TypeScript app. Everything — including running real Python — happens in your browser tab.
@@ -105,7 +107,7 @@ node scripts/e2e-smoke.mjs http://localhost:5173/
 ## Roadmap
 
 - **`polyevolve`** as a proper Python package — would complete a `polysearch` / `polysort` / `polyevolve` trilogy sharing one instrumentation convention. A JS-native genetic-algorithm family (Matter.js creatures) shipped and was then removed in `0f5adcd` precisely so it could come back this way; the working prototype is preserved at the `evolve-js-prototype` tag.
-- **Comparator verification counterexamples on the bars** — search renders its refutation on the board (the exact cell, and by how much). Sort reports its counterexample in words but does not yet highlight the offending values in the bar canvas, which is the same "look at it, don't just read it" affordance.
+- **A shared timeline across both families** — the activity log is global, but a run in Search and a run in Sort are only distinguishable by tool name. Tagging entries by family would let the log double as a session history worth scrubbing.
 
 ## Vendored library changes
 

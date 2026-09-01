@@ -3,10 +3,22 @@ import type { AuthoredSortProblem, SortTrace } from './types';
 import { deriveSortVisualState } from './deriveVisualState';
 import { VIZ } from '../shared/vizColors';
 
+// The values a comparator verification was refuted on, each tagged with the
+// letter the verdict card calls it. Matched by VALUE rather than by index --
+// a comparator is a function of values, the counterexample names values, and
+// after a partial sort the value that was `a` is no longer at the index it
+// started at. Every bar holding that value is marked, since the comparator
+// misbehaves on it wherever it appears.
+export interface CounterexampleMark {
+  value: number;
+  role: string;
+}
+
 const MAIN_HEIGHT = 180;
 const AUX_HEIGHT = 40;
 const MARK_HEIGHT = 24;
 const MIN_BAR_GAP = 1;
+const CE_LABEL_HEIGHT = 16;
 
 const HIGHLIGHT_COLOR: Record<string, string> = {
   compare: VIZ.yellow,
@@ -16,7 +28,15 @@ const HIGHLIGHT_COLOR: Record<string, string> = {
 
 // Same imperative ref + useEffect pattern as MazeCanvas — canvas rendering is
 // kept outside React's reconciliation on purpose.
-export function BarArrayCanvas({ problem, trace }: { problem: AuthoredSortProblem; trace: SortTrace | null }) {
+export function BarArrayCanvas({
+  problem,
+  trace,
+  counterexample,
+}: {
+  problem: AuthoredSortProblem;
+  trace: SortTrace | null;
+  counterexample?: CounterexampleMark[] | null;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -28,7 +48,11 @@ export function BarArrayCanvas({ problem, trace }: { problem: AuthoredSortProble
     const n = problem.values.length;
     const width = Math.max(480, n * 6);
     const auxBuffers = trace ? Object.keys(deriveSortVisualState(problem.values, trace.entries, trace.currentSeq).auxiliary) : [];
-    const height = MAIN_HEIGHT + MARK_HEIGHT + auxBuffers.length * AUX_HEIGHT + 20;
+    // Role letters are drawn above the bars, so they need headroom that the
+    // plot would otherwise use.
+    const ceMarks = counterexample?.length ? counterexample : null;
+    const topPad = ceMarks ? CE_LABEL_HEIGHT : 0;
+    const height = topPad + MAIN_HEIGHT + MARK_HEIGHT + auxBuffers.length * AUX_HEIGHT + 20;
     canvas.width = width;
     canvas.height = height;
 
@@ -59,7 +83,8 @@ export function BarArrayCanvas({ problem, trace }: { problem: AuthoredSortProble
     const dataMax = Math.max(0, ...finite);
     const span = dataMax - dataMin || 1;
     const plotHeight = MAIN_HEIGHT - 10;
-    const baselineY = MAIN_HEIGHT - ((0 - dataMin) / span) * plotHeight;
+    const mainBottom = topPad + MAIN_HEIGHT;
+    const baselineY = mainBottom - ((0 - dataMin) / span) * plotHeight;
     const barWidth = Math.max(1, width / n - MIN_BAR_GAP);
 
     if (dataMin < 0) {
@@ -74,17 +99,31 @@ export function BarArrayCanvas({ problem, trace }: { problem: AuthoredSortProble
     for (let i = 0; i < n; i++) {
       const raw = mainValues[i];
       const value = Number.isFinite(raw) ? raw : 0;
-      const valueY = MAIN_HEIGHT - ((value - dataMin) / span) * plotHeight;
+      const valueY = mainBottom - ((value - dataMin) / span) * plotHeight;
       const top = Math.min(valueY, baselineY);
       const barHeight = Math.max(2, Math.abs(baselineY - valueY));
       const x = i * (barWidth + MIN_BAR_GAP);
       const highlight = visual?.highlighted[i];
       ctx.fillStyle = highlight ? HIGHLIGHT_COLOR[highlight] : atEnd ? VIZ.green : VIZ.sky;
       ctx.fillRect(x, top, barWidth, barHeight);
+
+      // Outline + role letter, matching MazeCanvas's treatment of a refuted
+      // state: the point of a counterexample is that you can look at it.
+      const mark = ceMarks?.find((m) => m.value === raw);
+      if (mark) {
+        ctx.strokeStyle = VIZ.vermillion;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x - 0.5, top - 1, barWidth + 1, barHeight + 2);
+        ctx.lineWidth = 1;
+        ctx.fillStyle = VIZ.vermillion;
+        ctx.font = 'bold 11px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(mark.role, x + barWidth / 2, topPad - 4);
+      }
     }
 
     // Auxiliary buffer strips (key/left/right/count/output/negatives/...).
-    let auxY = MAIN_HEIGHT + 10;
+    let auxY = mainBottom + 10;
     for (const bufferName of auxBuffers) {
       const values = visual?.auxiliary[bufferName] ?? {};
       ctx.fillStyle = '#b3bac2';
@@ -109,7 +148,7 @@ export function BarArrayCanvas({ problem, trace }: { problem: AuthoredSortProble
     ctx.textAlign = 'left';
     const statusText = atEnd ? 'sorted' : visual?.markText ?? '';
     ctx.fillText(statusText, 4, height - 6);
-  }, [problem, trace, trace?.currentSeq, trace?.entries.length]);
+  }, [problem, trace, trace?.currentSeq, trace?.entries.length, counterexample]);
 
   return (
     <div className="bar-canvas-wrapper">
@@ -130,6 +169,11 @@ export function BarArrayCanvas({ problem, trace }: { problem: AuthoredSortProble
         <span>
           <i className="swatch" style={{ background: VIZ.green }} /> sorted
         </span>
+        {counterexample?.length ? (
+          <span>
+            <i className="swatch swatch-outline" style={{ borderColor: VIZ.vermillion }} /> counterexample
+          </span>
+        ) : null}
       </div>
     </div>
   );
