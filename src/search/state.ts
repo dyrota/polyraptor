@@ -1,5 +1,5 @@
 import { createStore } from '../shared/store';
-import { storeTrace, type Trace } from '../shared/traceStore';
+import { storeTrace, tracesStore, type Trace } from '../shared/traceStore';
 import type { AuthoredProblem, SearchTrace } from './types';
 import type { VerificationReport } from './verifyHeuristic';
 
@@ -82,12 +82,21 @@ export const verificationStore = createStore<StoredVerification | null>(null);
 
 export function setVerification(v: StoredVerification | null) {
   verificationStore.setState(v);
+  if (!v) return;
   // Bring the verified problem into view, the same way every authoring tool
   // already activates what it just created. Without this an agent could verify
   // problem X while the panel still displayed problem Y, and the verdict would
   // be correctly suppressed as stale -- so the agent would answer and the human
   // would see nothing at all, which is the exact failure this feature exists to
-  // avoid. (Display still follows an active trace when there is one, per the
-  // precedence established in 5de2f58.)
-  if (v) activeProblemIdStore.setState(v.problem_id);
+  // avoid.
+  activeProblemIdStore.setState(v.problem_id);
+  // Setting the id alone is not enough: display follows the active TRACE
+  // first (per the precedence established in 5de2f58), so a trace left over
+  // from a different problem outranks the line above and re-opens the very
+  // hole it closes. A trace of another problem cannot be drawn against this
+  // one anyway, so it is dropped. (Found while building the sort family's
+  // comparator verification, which inherited the same hole.)
+  const activeTraceId = activeTraceIdStore.getState();
+  const activeTrace = activeTraceId ? tracesStore.getState()[activeTraceId] : null;
+  if (activeTrace && activeTrace.problem_id !== v.problem_id) activeTraceIdStore.setState(null);
 }

@@ -137,6 +137,22 @@ check('card explains the overestimate in words', /overestimate|true remaining co
 check('card reports how many states were checked', /checked/i.test(cardText), cardText.slice(0, 200));
 await page.screenshot({ path: SHOT_DIR + 'verify-heuristic-refuted.png', fullPage: true });
 
+// A verdict must survive a leftover trace from a DIFFERENT problem. Display
+// follows the active trace before activeProblemId, so without setVerification
+// dropping a foreign trace the card is suppressed as stale and the tool call
+// paints nothing -- reachable any time an agent runs one problem then verifies
+// another. (Found while building the sort family's comparator verification,
+// which inherited the identical precedence.)
+console.log('\n=== a verdict outranks a leftover trace from another problem ===');
+const otherMaze = await call('search_author_maze', { rows: 6, cols: 6, wall_density: 0, seed: 11 });
+await call('search_run_algorithm', { problem_id: otherMaze.problem_id, algorithm: 'breadth_first' });
+await page.waitForTimeout(300);
+await authorAndVerify(maze.problem_id, 'def heuristic(state):\n    r, c = state\n    return 3 * (abs(r - 9) + abs(c - 9))\n');
+await page.waitForTimeout(400);
+const afterTrace = await page.locator('.verify-card').innerText().catch(() => '');
+check('card is shown despite another problem having the active trace', afterTrace.length > 0, `len=${afterTrace.length}`);
+check('  -> and it is the verdict for the verified problem', /refuted/i.test(afterTrace), afterTrace.slice(0, 160));
+
 // Stale-verdict guard: switching to another problem must not show this verdict.
 await call('search_author_n_queens', { n: 5 });
 await page.waitForTimeout(400);
