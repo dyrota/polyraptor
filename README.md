@@ -117,7 +117,7 @@ node scripts/e2e-smoke.mjs http://localhost:5173/
 ## Roadmap
 
 - **`polyevolve`** as a proper Python package — would complete a `polysearch` / `polysort` / `polyevolve` trilogy sharing one instrumentation convention. A JS-native genetic-algorithm family (Matter.js creatures) shipped and was then removed in `0f5adcd` precisely so it could come back this way; the working prototype is preserved at the `evolve-js-prototype` tag.
-- **A shared timeline across both families** — the activity log is global, but a run in Search and a run in Sort are only distinguishable by tool name. Tagging entries by family would let the log double as a session history worth scrubbing.
+- **Click a log entry to restore that state** — every entry already names the `problem_id` and `trace_id` it touched, so the timeline could double as a session history you scrub rather than only read.
 
 ## Vendored library changes
 

@@ -49,6 +49,7 @@ const timeline = () =>
       .map((n) => ({
         actor: n.classList.contains('actor-human') ? 'human' : 'agent',
         label: n.querySelector('.activity-name')?.textContent ?? '',
+        family: n.querySelector('.activity-family')?.textContent ?? null,
         status: (n.className.match(/status-(\w+)/) ?? [])[1] ?? '',
       }))
       .reverse()
@@ -76,6 +77,10 @@ entries = await timeline();
 check('a second entry appeared', entries.length === 2, JSON.stringify(entries));
 check('  -> attributed to the human', entries[1]?.actor === 'human', JSON.stringify(entries[1]));
 check('  -> and named by the button, not a tool', entries[1]?.label === 'New Maze', JSON.stringify(entries[1]));
+// "Run" alone does not say which panel moved; a tool name already carries its
+// family as a prefix, so only human entries are tagged.
+check('  -> tagged with its family, which the button name lacks', entries[1]?.family === 'search', JSON.stringify(entries[1]));
+check('  -> while the agent entry is not (its tool name already says)', entries[0]?.family === null, JSON.stringify(entries[0]));
 
 // ---------------------------------------------------------------------------
 console.log('\n=== the interleaving is preserved in order ===');
@@ -147,6 +152,23 @@ await page.waitForTimeout(200);
 check('All restores the full timeline', (await timeline()).length === total);
 
 await page.screenshot({ path: SHOT_DIR + 'activity-log.png', fullPage: true });
+
+// ---------------------------------------------------------------------------
+console.log('\n=== the log is capped, so a scrubbing agent cannot grow it forever ===');
+// playback_step is the realistic way this happens: an agent scrubbing a trace
+// calls it hundreds of times in seconds, each entry holding a result string.
+const before = (await timeline()).length;
+await page.evaluate(async () => {
+  for (let i = 0; i < 320; i++) {
+    await navigator.modelContextTesting.executeTool('playback_step', JSON.stringify({ direction: 'forward' }));
+  }
+});
+await page.waitForTimeout(600);
+const after = (await timeline()).length;
+check('the list stops growing at its cap', after <= 300, `${before} -> ${after}`);
+check('  -> and the cap was actually reached (so this tested something)', after === 300, String(after));
+const newest = (await timeline()).at(-1);
+check('  -> keeping the most recent entries, not the oldest', newest?.label === 'playback_step', JSON.stringify(newest));
 
 console.log('\n=== page errors ===');
 if (pageErrors.length) {

@@ -117,7 +117,7 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
     putProblem({ problem_id: newProblemId('maze'), type: 'maze', maze: generated.maze, start: generated.start, goal: generated.goal });
     // Synchronous: maze generation is pure JS, so there is no running state to
     // show -- unlike every other action here, which goes through Pyodide.
-    noteHumanAction('New Maze', { rows: 12, cols: 16, wall_density: 0.3 });
+    noteHumanAction('search', 'New Maze', { rows: 12, cols: 16, wall_density: 0.3 });
   }
 
   // Each built-in problem type has exactly one applicable heuristic family
@@ -144,7 +144,7 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
       // uncaught try/finally, so clicking Run on an agent-authored Python
       // problem did nothing at all, with no message anywhere. Route it to the
       // sandboxed runner the agent's own tool would have used instead.
-      await humanAction('Run', { algorithm, problem_id: activeProblem.problem_id }, async () => {
+      await humanAction('search', 'Run', { algorithm, problem_id: activeProblem.problem_id }, async () => {
         const trace =
           activeProblem.type === 'python_problem'
             ? await (async () => {
@@ -176,7 +176,7 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
       // humanAction log it as an error: these paths fail by returning
       // {valid:false}/{ok:false}, not by throwing, and a silent `return` would
       // be recorded as a success.
-      await humanAction('Validate & Run (Problem)', { algorithm: pythonAlgorithm }, async () => {
+      await humanAction('search', 'Validate & Run (Problem)', { algorithm: pythonAlgorithm }, async () => {
         const authored = await authorPythonSearchProblem(pythonSource);
         if (!authored.valid) {
           setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
@@ -222,7 +222,7 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
     setPythonRunning(true);
     setElapsedMs(0);
     try {
-      await humanAction('Validate & Run (Algorithm)', { problem_id: activeProblem.problem_id }, async () => {
+      await humanAction('search', 'Validate & Run (Algorithm)', { problem_id: activeProblem.problem_id }, async () => {
         const authored = await authorPythonSearchAlgorithm(pythonAlgorithmSource);
         if (!authored.valid) {
           setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
@@ -259,6 +259,7 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
     setElapsedMs(0);
     try {
       await humanAction(
+        'search',
         'Validate & Run (Heuristic)',
         { algorithm: pythonHeuristicAlgorithm, problem_id: activeProblem.problem_id },
         async () => {
@@ -297,7 +298,7 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
     setPythonRunning(true);
     setElapsedMs(0);
     try {
-      await humanAction('Verify heuristic', { problem_id: activeProblem.problem_id }, async () => {
+      await humanAction('search', 'Verify heuristic', { problem_id: activeProblem.problem_id }, async () => {
         const authored = await authorPythonSearchHeuristic(pythonHeuristicSource, activeProblem);
         if (!authored.valid) {
           setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });

@@ -298,6 +298,13 @@ button, select, input {
 }
 .actor-human .activity-actor { background: #33260f; color: var(--brand-strong); }
 .actor-agent .activity-actor { background: #0d2d4f; color: #79c0ff; }
+.activity-family {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  flex-shrink: 0;
+}
+.activity-family::after { content: ' ·'; }
 .activity-name { font-weight: 600; color: #79c0ff; font-family: var(--mono); word-break: break-word; }
 .actor-human .activity-name { color: var(--text); font-family: inherit; }
 .activity-status { margin-left: auto; flex-shrink: 0; font-size: 0.72rem; }

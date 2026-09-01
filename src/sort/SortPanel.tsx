@@ -125,7 +125,7 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
   async function handleNewDataset() {
     setPythonError(null);
     try {
-      await humanAction('New Dataset', { dataset_type: datasetType, size }, async () => {
+      await humanAction('sort', 'New Dataset', { dataset_type: datasetType, size }, async () => {
         const { values } = await authorSortDataset({ dataset_type: datasetType, size });
         putProblem({ problem_id: newProblemId('sort'), dataset_type: datasetType, size: values.length, values });
       });
@@ -150,7 +150,7 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
       // comparator. Unlike search's equivalent this never threw, so nothing
       // surfaced -- it just quietly answered the wrong question. Route custom
       // problems to the runner that actually re-execs their source.
-      await humanAction('Run', { algorithm, problem_id: activeProblem.problem_id }, async () => {
+      await humanAction('sort', 'Run', { algorithm, problem_id: activeProblem.problem_id }, async () => {
         const trace =
           activeProblem.dataset_type === 'python_problem'
             ? await (async () => {
@@ -180,7 +180,7 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
       // humanAction log it as an error: these paths fail by returning
       // {valid:false}/{ok:false}, not by throwing, and a silent `return` would
       // be recorded as a success.
-      await humanAction('Validate & Run (Problem)', { algorithm }, async () => {
+      await humanAction('sort', 'Validate & Run (Problem)', { algorithm }, async () => {
         const authored = await authorPythonSortProblem(pythonSource);
         if (!authored.valid) {
           setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
@@ -220,7 +220,7 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
     setPythonRunning(true);
     setElapsedMs(0);
     try {
-      await humanAction('Validate & Run (Algorithm)', { problem_id: activeProblem.problem_id }, async () => {
+      await humanAction('sort', 'Validate & Run (Algorithm)', { problem_id: activeProblem.problem_id }, async () => {
         const authored = await authorPythonSortAlgorithm(pythonAlgorithmSource);
         if (!authored.valid) {
           setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
@@ -264,7 +264,7 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
         setPythonError({ friendly_error: 'Enter at least one number to sort, separated by commas.' });
         return;
       }
-      await humanAction('Validate & Run (Comparator)', { algorithm, value_count: values.length }, async () => {
+      await humanAction('sort', 'Validate & Run (Comparator)', { algorithm, value_count: values.length }, async () => {
         const authored = await authorPythonSortComparator(values, pythonComparatorSource);
         if (!authored.valid) {
           setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
@@ -315,7 +315,7 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
     setPythonRunning(true);
     setElapsedMs(0);
     try {
-      await humanAction('Verify comparator', { problem_id: activeProblem.problem_id }, async () => {
+      await humanAction('sort', 'Verify comparator', { problem_id: activeProblem.problem_id }, async () => {
         const result = await verifyComparator(activeProblem);
         if (!result.ok) {
           setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
@@ -346,7 +346,7 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
         setPythonError({ friendly_error: 'Enter at least one number to sort, separated by commas.' });
         return;
       }
-      await humanAction('Validate & Verify', { value_count: values.length }, async () => {
+      await humanAction('sort', 'Validate & Verify', { value_count: values.length }, async () => {
         const authored = await authorPythonSortComparator(values, pythonComparatorSource);
         if (!authored.valid) {
           setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });

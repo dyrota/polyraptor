@@ -13,6 +13,7 @@ import { createStore } from './store';
 // "a human and an agent can touch the same state at the same time" something
 // you can watch rather than something the README claims.
 export type Actor = 'agent' | 'human';
+export type Family = 'search' | 'sort';
 
 export interface ActivityLogEntry {
   id: string;
@@ -22,6 +23,11 @@ export interface ActivityLogEntry {
   // button they pressed. One field rather than two because the log's whole
   // point is that these are the same kind of event.
   label: string;
+  // Human entries only. Every tool name already carries its family as a
+  // prefix (sort_run_algorithm), but a button just says "Run" -- and with both
+  // panels writing to one timeline, "Run" alone does not say which array or
+  // maze moved.
+  family?: Family;
   detail?: unknown;
   status: 'running' | 'ok' | 'error';
   result?: unknown;
@@ -31,11 +37,22 @@ export interface ActivityLogEntry {
 
 export const activityLogStore = createStore<ActivityLogEntry[]>([]);
 
+// The log is unbounded in principle and the playback_* tools make that real:
+// an agent scrubbing a trace can call playback_step hundreds of times in a few
+// seconds, each entry retaining its full result string. Capping keeps a long
+// session from growing a list nobody scrolls to the bottom of anyway. Oldest
+// go first, which is the right end to lose -- the interleaving being
+// demonstrated is always the recent kind.
+const MAX_ENTRIES = 300;
+
 let counter = 0;
 
-function start(actor: Actor, label: string, detail: unknown): { id: string; began: number } {
+function start(actor: Actor, label: string, detail: unknown, family?: Family): { id: string; began: number } {
   const id = `${label}-${++counter}`;
-  activityLogStore.setState((prev) => [...prev, { id, timestamp: Date.now(), actor, label, detail, status: 'running' }]);
+  activityLogStore.setState((prev) => {
+    const next = [...prev, { id, timestamp: Date.now(), actor, label, family, detail, status: 'running' as const }];
+    return next.length > MAX_ENTRIES ? next.slice(next.length - MAX_ENTRIES) : next;
+  });
   return { id, began: performance.now() };
 }
 
@@ -97,8 +114,8 @@ function failureMessage(value: unknown): string | null {
 // same from either side. Rethrows rather than swallowing, unlike logged():
 // panel handlers have their own catch and their own error UI, and swallowing
 // here would break them.
-export async function humanAction<T>(label: string, detail: unknown, fn: () => Promise<T>): Promise<T> {
-  const { id, began } = start('human', label, detail);
+export async function humanAction<T>(family: Family, label: string, detail: unknown, fn: () => Promise<T>): Promise<T> {
+  const { id, began } = start('human', label, detail, family);
   try {
     const result = await fn();
     const failed = failureMessage(result);
@@ -112,7 +129,7 @@ export async function humanAction<T>(label: string, detail: unknown, fn: () => P
 
 // For a human action that completes instantly and so has no meaningful
 // running state.
-export function noteHumanAction(label: string, detail?: unknown) {
-  const { id, began } = start('human', label, detail);
+export function noteHumanAction(family: Family, label: string, detail?: unknown) {
+  const { id, began } = start('human', label, detail, family);
   finish(id, began, { status: 'ok' });
 }

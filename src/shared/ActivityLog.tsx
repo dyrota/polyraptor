@@ -72,6 +72,9 @@ export function ActivityLog() {
             <li key={e.id} className={`activity-entry actor-${e.actor} status-${e.status}`}>
               <div className="activity-header">
                 <span className="activity-actor">{e.actor === 'human' ? 'you' : 'agent'}</span>
+                {/* Only for human entries: a tool name already begins with its
+                    family, so repeating it there would be noise. */}
+                {e.family && <span className="activity-family">{e.family}</span>}
                 <span className="activity-name">{e.label}</span>
                 <span className="activity-status">
                   {e.status}
