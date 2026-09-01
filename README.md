@@ -19,9 +19,21 @@ A regular MCP server hitting a REST API could expose "run this algorithm" as a t
 
 Both families let a human *or* an agent supply real Python instead of picking a built-in: a whole `StateSpaceProblem`/`SortProblem`, a whole algorithm, or just the one interesting function (a heuristic, a comparator). Untrusted code runs in a dedicated worker with a hard timeout, so an infinite loop is a friendly error message rather than a frozen tab.
 
-## Heuristic verification
+## Verification
 
-The standout feature. `search_verify_heuristic` takes a heuristic someone actually wrote and empirically checks it against ground truth — computed by exhaustively exploring the reachable state space and running a multi-source backward Dijkstra from every goal state, so it works on N-Queens (many goals) and custom Python problems, not just mazes. Three properties, each returning a concrete counterexample rather than a boolean:
+The standout feature, and the one both families now share: take code someone actually wrote and *empirically check whether it was allowed to do what it did* — reporting a concrete counterexample rather than a boolean, and an honest verdict rather than a green tick.
+
+**The verdict matters more than the booleans.** Both checks are bounded by a budget, and hitting it makes the two "nothing found" outcomes mean genuinely different things. A violation found among a subset is still a violation, so refutation is sound at any size; the *absence* of one certifies something only if the check ran to completion. Hence three verdicts, used identically by both families:
+
+- `refuted` — a counterexample exists. Trustworthy at any problem size.
+- `proven` — the check ran to completion and found nothing. A real guarantee.
+- `unrefuted` — the budget was hit. Nothing found among what was checked, which is **not** the same as the property holding.
+
+Reporting `unrefuted` as "it holds" would be a lie, and the gap between "I found no bug" and "there is no bug" is the thing the feature exists to teach.
+
+### `search_verify_heuristic`
+
+Checks a heuristic against ground truth — computed by exhaustively exploring the reachable state space and running a multi-source backward Dijkstra from every goal state, so it works on N-Queens (many goals) and custom Python problems, not just mazes.
 
 | property | meaning |
 | --- | --- |
@@ -29,13 +41,25 @@ The standout feature. `search_verify_heuristic` takes a heuristic someone actual
 | `consistent` | `h(n) ≤ c(n,n′) + h(n′)` on every edge — strictly stronger; what A\* actually needs |
 | `goal_zero` | `h(goal) == 0` |
 
-**The verdict matters more than the booleans.** Ground truth requires exhaustive exploration, which an arbitrary problem can outgrow, and under a truncated exploration the backward cost map is computed over a subgraph — so `dist_partial(n) ≥ dist_true(n)`. That asymmetry means a violation found is always a real violation, while the *absence* of one proves something only if exploration completed. Hence three verdicts:
+Under a truncated exploration the backward cost map is computed over a subgraph, so `dist_partial(n) ≥ dist_true(n)` — the asymmetry that makes refutation sound at any size. The counterexample is rendered on the board — the exact cell where the heuristic overestimates, and by how much — so a refutation is something you can look at, not just read.
 
-- `refuted` — a counterexample exists. Trustworthy at any problem size.
-- `proven` — the whole reachable state space was explored and nothing was found. A real guarantee.
-- `unrefuted` — the budget was hit. Nothing found among what was checked, which is **not** the same as admissible.
+### `sort_verify_comparator`
 
-Reporting `unrefuted` as "admissible" would be a lie, and the gap between "I found no bug" and "there is no bug" is the thing the feature exists to teach. The counterexample is rendered on the board — the exact cell where the heuristic overestimates, and by how much — so a refutation is something you can look at, not just read.
+The same machinery, pointed at the other family — and if anything the more urgent of the two. A broken heuristic still lets A\* finish and you can see the path it took. A broken comparator makes a *correct* sorting algorithm return a wrong answer with no exception and no visible symptom: `is_sorted` even reports `true`, because sortedness here is judged by the problem's own comparator, so an inconsistent comparator is asked to grade itself and happily agrees. That circularity is why the check has to come from outside, against laws rather than against output. **If a sort result looks wrong and nothing was raised, verify the comparator before suspecting the algorithm.**
+
+`comparator(a, b)` has to induce a strict weak ordering for "sorted" to mean anything. Five laws, checked by calling it on every pair and triple of the dataset's distinct values:
+
+| property | meaning |
+| --- | --- |
+| `total` | returns a real number for every pair — no exception, no `None`, no `NaN` |
+| `deterministic` | the same pair compares the same way twice |
+| `antisymmetric` | `sign(cmp(a,b)) == -sign(cmp(b,a))`, which at `a == b` forces `cmp(a,a) == 0` |
+| `transitive` | `a < b` and `b < c` ⟹ `a < c` — a cycle makes "sorted" undefined |
+| `equivalence_transitive` | `a == b` and `b == c` ⟹ `a == c` |
+
+The last one is the trap worth knowing: a tolerance comparator like `0 if abs(a - b) < 0.5` calls `1.0` and `1.4` equal, `1.4` and `1.8` equal, and `1.0` and `1.8` different. It is antisymmetric, transitive on strict inequality, and still not an ordering.
+
+`proven` here is stronger than search's in one way and weaker in another, and the summary says both: a sort only ever compares elements of its own dataset, so a comparator proven over those values is genuinely enough to make sorting *this* dataset well-defined — but it says nothing about values not in it.
 
 ## Architecture
 
@@ -72,6 +96,7 @@ node scripts/e2e-smoke.mjs http://localhost:5173/
 | `e2e-python-tier3-smoke` | authored heuristics and comparators |
 | `e2e-share-link-smoke` | shareable links round-trip |
 | `e2e-verify-heuristic-smoke` | heuristic verification, all three verdicts |
+| `e2e-verify-comparator-smoke` | comparator verification, all five laws and all three verdicts |
 | `e2e-state-discovery-smoke` | an agent seeing state a human created |
 | `e2e-persistence-smoke` | reload survival, and storage being unavailable |
 | `e2e-regression-smoke` | specific bugs found in audit, kept fixed |
@@ -79,7 +104,6 @@ node scripts/e2e-smoke.mjs http://localhost:5173/
 ## Roadmap
 
 - **`polyevolve`** as a proper Python package — would complete a `polysearch` / `polysort` / `polyevolve` trilogy sharing one instrumentation convention. A JS-native genetic-algorithm family (Matter.js creatures) shipped and was then removed in `0f5adcd` precisely so it could come back this way; the working prototype is preserved at the `evolve-js-prototype` tag.
-- **Comparator verification for sort** — the same machinery applied to the other family. A comparator has real checkable properties (totality, antisymmetry, transitivity), and an intransitive one is a classic bug that produces silently wrong output rather than an error.
 - **Interleaved human/agent activity log** — the sidebar currently shows only the agent's tool calls, so a human's own clicks are invisible in the one place the shared-state thesis would be most legible.
 
 ## Vendored library changes

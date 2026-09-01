@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { problemsStore, activeProblemIdStore, activeTraceIdStore, putProblem, putTrace, newProblemId } from './state';
+import { problemsStore, activeProblemIdStore, activeTraceIdStore, putProblem, putTrace, newProblemId, verificationStore, setVerification } from './state';
 import { tracesStore } from '../shared/traceStore';
 import { authorSortDataset, runSortAlgorithm } from './runAlgorithm';
 import { authorPythonSortProblem, runAlgorithmOnPythonSortProblem } from './runPythonProblem';
 import { authorPythonSortAlgorithm, runPythonAlgorithmOnProblem } from './runPythonAlgorithm';
 import { authorPythonSortComparator } from './runPythonComparator';
+import { verifyComparator } from './verifyComparator';
+import { ComparatorVerificationCard } from './ComparatorVerificationCard';
 import { forceStop } from '../pyodide/workerBridge';
 import { BarArrayCanvas } from './BarArrayCanvas';
 import { ErrorBoundary } from '../shared/ErrorBoundary';
@@ -48,6 +50,10 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
   const traces = useSyncExternalStore(tracesStore.subscribe, tracesStore.getState);
   const activeProblemId = useSyncExternalStore(activeProblemIdStore.subscribe, activeProblemIdStore.getState);
   const activeTraceId = useSyncExternalStore(activeTraceIdStore.subscribe, activeTraceIdStore.getState);
+  // Subscribed, not local state: an agent calling sort_verify_comparator must
+  // paint its verdict onto the panel the human is already looking at, exactly
+  // as search does with search_verify_heuristic.
+  const verification = useSyncExternalStore(verificationStore.subscribe, verificationStore.getState);
   const [datasetType, setDatasetType] = useState<SortDatasetType>('random_integers');
   const [size, setSize] = useState(30);
   const [algorithm, setAlgorithm] = useState<SortAlgorithm>('bubble_sort');
@@ -268,6 +274,77 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
     }
   }
 
+  // Verification is a separate action from running, for a sharper reason than
+  // on the search side: running a sort with a broken comparator produces a
+  // perfectly smooth animation and an is_sorted: true summary, because
+  // sortedness is judged by that same comparator. The animation cannot show
+  // you this bug; only the laws can.
+  //
+  // Verifies whatever problem is ACTIVE rather than the comparator editor's
+  // contents, so it works on a built-in dataset and on a full authored Problem
+  // too -- every SortProblem has a comparator, and the interesting ones are
+  // often not the ones typed into the comparator box. The Verify button
+  // therefore sits with the run controls, not inside the comparator sub-mode.
+  async function handleVerifyComparator() {
+    if (!activeProblem) return;
+    setPythonError(null);
+    setPythonRunning(true);
+    setElapsedMs(0);
+    try {
+      const result = await verifyComparator(activeProblem);
+      if (!result.ok) {
+        setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
+        return;
+      }
+      setVerification({ problem_id: activeProblem.problem_id, report: result.report!, at: Date.now() });
+    } catch (err) {
+      setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setPythonRunning(false);
+    }
+  }
+
+  // The comparator sub-mode's own verify path: authors what is in the editor
+  // into a problem first, so a comparator can be checked WITHOUT running a
+  // sort against it. That ordering matters pedagogically -- "run it, watch it
+  // look fine, then find out it was never a valid ordering" is the lesson, and
+  // it only lands if verifying is reachable as its own step.
+  async function handleVerifyAuthoredComparator() {
+    setPythonError(null);
+    setPythonRunning(true);
+    setElapsedMs(0);
+    try {
+      const values = parseComparatorValues(pythonComparatorValuesText);
+      if (values.length === 0) {
+        setPythonError({ friendly_error: 'Enter at least one number to sort, separated by commas.' });
+        return;
+      }
+      const authored = await authorPythonSortComparator(values, pythonComparatorSource);
+      if (!authored.valid) {
+        setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
+        return;
+      }
+      const problem = {
+        problem_id: newProblemId('sort-cmp-py'),
+        dataset_type: 'python_problem' as const,
+        size: authored.size!,
+        values: authored.values!,
+        source_code: authored.synthetic_source!,
+      };
+      putProblem(problem);
+      const result = await verifyComparator(problem);
+      if (!result.ok) {
+        setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
+        return;
+      }
+      setVerification({ problem_id: problem.problem_id, report: result.report!, at: Date.now() });
+    } catch (err) {
+      setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setPythonRunning(false);
+    }
+  }
+
   function handleStop() {
     forceStop();
     setPythonRunning(false);
@@ -303,6 +380,13 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
           </select>
           <button onClick={handleRun} disabled={!activeProblem || running}>
             {running ? 'Running...' : 'Run'}
+          </button>
+          <button
+            onClick={handleVerifyComparator}
+            disabled={!activeProblem || running || pythonRunning}
+            title="Check that this problem's comparator is a valid ordering — a broken one makes a correct sort return a wrong answer with no error"
+          >
+            Verify comparator
           </button>
         </div>
       )}
@@ -372,6 +456,13 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
                 <button onClick={handlePythonComparatorRun} disabled={pythonRunning}>
                   {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run'}
                 </button>
+                <button
+                  onClick={handleVerifyAuthoredComparator}
+                  disabled={pythonRunning}
+                  title="Check the laws a sort depends on — a comparator can animate beautifully and still be an invalid ordering"
+                >
+                  Validate &amp; Verify
+                </button>
                 {pythonRunning && <button onClick={handleStop}>Stop</button>}
                 <CopyShareLinkButton
                   payload={{ kind: 'sort-comparator', source: pythonComparatorSource, values: parseComparatorValues(pythonComparatorValuesText) }}
@@ -416,6 +507,14 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
       {activeProblem && (
         <ErrorBoundary>
           <BarArrayCanvas problem={activeProblem} trace={activeTrace} />
+        </ErrorBoundary>
+      )}
+
+      {/* Suppressed unless the verdict describes the problem on screen -- the
+          same staleness guard SearchPanel applies to its own card. */}
+      {verification && activeProblem && verification.problem_id === activeProblem.problem_id && (
+        <ErrorBoundary>
+          <ComparatorVerificationCard report={verification.report} />
         </ErrorBoundary>
       )}
 

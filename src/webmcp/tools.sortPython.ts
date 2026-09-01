@@ -3,6 +3,8 @@ import { logged } from '../shared/toolCallLog';
 import { authorPythonSortProblem, runAlgorithmOnPythonSortProblem } from '../sort/runPythonProblem';
 import { authorPythonSortAlgorithm, runPythonAlgorithmOnProblem } from '../sort/runPythonAlgorithm';
 import { authorPythonSortComparator } from '../sort/runPythonComparator';
+import { verifyComparator, summarizeComparatorVerdict } from '../sort/verifyComparator';
+import { setVerification } from '../sort/state';
 import { putProblem, putTrace, getProblem, newProblemId, putAlgorithm, getAlgorithm, newAlgorithmId } from '../sort/state';
 import type { SortAlgorithm } from '../sort/types';
 
@@ -216,5 +218,57 @@ export const sortPythonTools: ToolDefinition<never>[] = [
         return JSON.stringify({ problem_id: problemId, valid: true, size: result.size, values: result.values });
       }
     ),
+  },
+  {
+    name: 'sort_verify_comparator',
+    description:
+      "Empirically check whether a problem's comparator is a valid ordering at all — by actually calling it on " +
+      'every pair and triple of the dataset\'s distinct values and testing the laws a sort depends on, not by ' +
+      'trusting a claim about it. Works on any problem_id: a built-in dataset, a sort_author_python_problem, or ' +
+      'a sort_author_python_comparator. ' +
+      'WHY THIS MATTERS MORE THAN IT SOUNDS. A broken comparator does not raise — a correct sorting algorithm ' +
+      'given one returns a wrong answer silently, and sort_run_algorithm still reports is_sorted: true, because ' +
+      "sortedness is judged by the problem's own comparator and an inconsistent comparator is being asked to " +
+      'grade itself. If a sort result looks wrong and no error was raised, verify the comparator before ' +
+      'suspecting the algorithm. ' +
+      'Five laws, each returning a concrete counterexample rather than a boolean: total (returns a real number ' +
+      'for every pair — no exception, no None, no NaN), deterministic (the same pair compares the same way ' +
+      'twice), antisymmetric (sign(cmp(a,b)) == -sign(cmp(b,a)), which at a == b forces cmp(a,a) == 0), ' +
+      'transitive (a < b and b < c implies a < c), and equivalence_transitive (a == b and b == c implies ' +
+      'a == c — the law that tolerance comparators like abs(a-b) < eps break). ' +
+      'READ THE VERDICT, NOT JUST THE BOOLEANS. verdict is one of: "refuted" — a counterexample was found, ' +
+      'trustworthy at any size; "proven" — every distinct value in the dataset was covered and nothing was ' +
+      'found, which means sorting THIS dataset is well-defined (it does NOT mean the comparator is correct for ' +
+      'values outside it); "unrefuted" — the dataset had more distinct values than value_budget, so the rest ' +
+      'went unchecked and nothing is proven. Do not report "unrefuted" as valid. ' +
+      'The verdict and counterexample also appear on the page the user is looking at.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        problem_id: { type: 'string' },
+        value_budget: {
+          type: 'integer',
+          description:
+            'Maximum distinct values to check (default 60, max 200). The triple sweep is cubic in this, so ' +
+            'raising it can turn an "unrefuted" verdict into "proven" at the cost of a much longer run.',
+        },
+      },
+      required: ['problem_id'],
+    },
+    execute: logged('sort_verify_comparator', async (args: { problem_id: string; value_budget?: number }) => {
+      const problem = getProblem(args.problem_id);
+      const result = await verifyComparator(problem, args.value_budget);
+      if (!result.ok) {
+        return JSON.stringify({
+          ok: false,
+          kind: result.kind,
+          friendly_error: result.friendly_error,
+          raw_traceback: result.raw_traceback,
+        });
+      }
+      const report = result.report!;
+      setVerification({ problem_id: problem.problem_id, report, at: Date.now() });
+      return JSON.stringify({ ok: true, summary: summarizeComparatorVerdict(report), ...report });
+    }),
   },
 ];

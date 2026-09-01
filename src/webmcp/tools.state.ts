@@ -125,8 +125,8 @@ export const stateTools: ToolDefinition<never>[] = [
     name: 'sort_get_state',
     description:
       'Report everything the Sort panel currently holds: the active problem (with its full value list), every ' +
-      'problem_id authored so far, the ids of any custom algorithms, and the active trace with its exact ' +
-      'playback position. ' +
+      'problem_id authored so far, the ids of any custom algorithms, the active trace with its exact ' +
+      'playback position, and the most recent comparator verification verdict. ' +
       'Call this FIRST if you did not author the current state yourself — the human can create datasets by ' +
       'clicking "New Dataset" in the page, and those ids exist but were never returned to you. Also the right ' +
       'recovery call after an "Unknown problem_id" or "Unknown trace_id" error.',
@@ -137,6 +137,7 @@ export const stateTools: ToolDefinition<never>[] = [
       const activeProblemId = sortState.activeProblemIdStore.getState();
       const activeTraceId = sortState.activeTraceIdStore.getState();
       const active = activeProblemId ? problems[activeProblemId] : null;
+      const verification = sortState.verificationStore.getState();
       const ids = Object.keys(sortState.algorithmsStore.getState());
 
       return JSON.stringify({
@@ -146,6 +147,19 @@ export const stateTools: ToolDefinition<never>[] = [
           .map((p) => describeSortProblem(p, false)),
         ...splitAuthored(ids),
         active_trace: describeTrace(activeTraceId),
+        latest_verification: verification
+          ? {
+              problem_id: verification.problem_id,
+              verdict: verification.report.verdict,
+              total: verification.report.total.holds,
+              deterministic: verification.report.deterministic.holds,
+              antisymmetric: verification.report.antisymmetric.holds,
+              transitive: verification.report.transitive.holds,
+              equivalence_transitive: verification.report.equivalence_transitive.holds,
+              values_checked: verification.report.values_checked,
+              budget_exceeded: verification.report.budget_exceeded,
+            }
+          : null,
       });
     }),
   },
