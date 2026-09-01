@@ -41,7 +41,7 @@ export const sortTools: ToolDefinition<never>[] = [
       'sort_author_dataset',
       async (args: { dataset_type: SortDatasetType; size?: number; seed?: number; swaps?: number; distinct?: number }) => {
         const { values } = await authorSortDataset(args);
-        const problem = { problem_id: newProblemId('sort'), dataset_type: args.dataset_type, size: values.length, values };
+        const problem = { problem_id: newProblemId('sort'), dataset_type: args.dataset_type, origin: 'agent' as const, size: values.length, values };
         putProblem(problem);
         return JSON.stringify({ problem_id: problem.problem_id, size: problem.size, values: problem.values });
       }
@@ -59,7 +59,7 @@ export const sortTools: ToolDefinition<never>[] = [
     },
     execute: logged('sort_author_custom', async (args: { values: number[] }) => {
       const { values } = await authorSortDataset({ dataset_type: 'custom', values: args.values });
-      const problem = { problem_id: newProblemId('sort'), dataset_type: 'custom' as const, size: values.length, values };
+      const problem = { problem_id: newProblemId('sort'), dataset_type: 'custom' as const, origin: 'agent' as const, size: values.length, values };
       putProblem(problem);
       return JSON.stringify({ problem_id: problem.problem_id, size: problem.size, values: problem.values });
     }),

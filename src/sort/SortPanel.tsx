@@ -13,11 +13,12 @@ import { ErrorBoundary } from '../shared/ErrorBoundary';
 import { PlaybackBar } from '../playback/PlaybackBar';
 import { PythonEditor } from '../shared/PythonEditor';
 import { CopyShareLinkButton } from '../shared/CopyShareLinkButton';
+import { ActiveProblemBar } from '../shared/ActiveProblemBar';
 import { usePersistedSource } from '../shared/persistentState';
 import { humanAction } from '../shared/activityLog';
 import type { SharedPayload } from '../shared/shareLink';
 import { SORT_PROBLEM_TEMPLATE, SORT_ALGORITHM_TEMPLATE, SORT_COMPARATOR_TEMPLATE } from './pythonTemplates';
-import type { SortAlgorithm, SortDatasetType, SortTrace } from './types';
+import type { AuthoredSortProblem, SortAlgorithm, SortDatasetType, SortTrace } from './types';
 
 const ALGORITHMS: SortAlgorithm[] = [
   'bubble_sort',
@@ -33,6 +34,23 @@ const ALGORITHMS: SortAlgorithm[] = [
 ];
 
 const DATASETS: SortDatasetType[] = ['random_integers', 'nearly_sorted', 'reverse_sorted', 'many_duplicates'];
+
+// See search/SearchPanel.tsx's describeProblem. A comparator-authored problem
+// is told apart from a full authored Problem class by its id prefix, which is
+// the only thing that distinguishes them once both are stored as a
+// python_problem -- and it is worth distinguishing, since "you wrote just the
+// comparator" and "you wrote the whole class" are different exercises.
+function describeProblem(problem: AuthoredSortProblem): { kind: string; detail?: string } {
+  const size = `${problem.size} value${problem.size === 1 ? '' : 's'}`;
+  if (problem.dataset_type === 'python_problem') {
+    return {
+      kind: problem.problem_id.startsWith('sort-cmp-py') ? 'Your Python comparator' : 'Your Python problem',
+      detail: size,
+    };
+  }
+  if (problem.dataset_type === 'custom') return { kind: 'Custom values', detail: size };
+  return { kind: problem.dataset_type, detail: size };
+}
 
 function parseComparatorValues(text: string): number[] {
   return text
@@ -127,7 +145,7 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
     try {
       await humanAction('sort', 'New Dataset', { dataset_type: datasetType, size }, async () => {
         const { values } = await authorSortDataset({ dataset_type: datasetType, size });
-        putProblem({ problem_id: newProblemId('sort'), dataset_type: datasetType, size: values.length, values });
+        putProblem({ problem_id: newProblemId('sort'), dataset_type: datasetType, origin: 'human', size: values.length, values });
       });
     } catch (err) {
       // Generating a dataset runs Python, so this fails if Pyodide never
@@ -190,6 +208,7 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
         const problem = {
           problem_id: problemId,
           dataset_type: 'python_problem' as const,
+          origin: 'human' as const,
           size: authored.size!,
           values: authored.values!,
           source_code: pythonSource,
@@ -274,6 +293,7 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
         const problem = {
           problem_id: problemId,
           dataset_type: 'python_problem' as const,
+          origin: 'human' as const,
           size: authored.size!,
           values: authored.values!,
           source_code: authored.synthetic_source!,
@@ -355,6 +375,7 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
         const problem = {
           problem_id: newProblemId('sort-cmp-py'),
           dataset_type: 'python_problem' as const,
+          origin: 'human' as const,
           size: authored.size!,
           values: authored.values!,
           source_code: authored.synthetic_source!,
@@ -383,40 +404,46 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
   return (
     <div className="sort-panel">
       <div className="mode-toggle">
-        <button className={mode === 'builtin' ? 'active' : ''} onClick={() => setMode('builtin')}>Built-in</button>
-        <button className={mode === 'python' ? 'active' : ''} onClick={() => setMode('python')}>Write your own</button>
+        <button aria-pressed={mode === 'builtin'} className={mode === 'builtin' ? 'active' : ''} onClick={() => setMode('builtin')}>Built-in</button>
+        <button aria-pressed={mode === 'python'} className={mode === 'python' ? 'active' : ''} onClick={() => setMode('python')}>Write your own</button>
       </div>
 
       {mode === 'builtin' && (
         <div className="search-controls">
-          <select value={datasetType} onChange={(e) => setDatasetType(e.target.value as SortDatasetType)}>
-            {DATASETS.map((d) => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
-          <input
-            type="number"
-            min={5}
-            max={300}
-            value={size}
-            onChange={(e) => setSize(Number(e.target.value))}
-            style={{ width: '4.5rem' }}
-          />
+          <label className="control-label">
+            Dataset
+            <select value={datasetType} onChange={(e) => setDatasetType(e.target.value as SortDatasetType)}>
+              {DATASETS.map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+          </label>
+          <label className="control-label">
+            Size
+            <input type="number" min={5} max={300} value={size} onChange={(e) => setSize(Number(e.target.value))} style={{ width: '4.5rem' }} />
+          </label>
           <button onClick={handleNewDataset}>New Dataset</button>
-          <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value as SortAlgorithm)}>
-            {ALGORITHMS.map((a) => (
-              <option key={a} value={a}>{a}</option>
-            ))}
-          </select>
+          <label className="control-label">
+            Algorithm
+            <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value as SortAlgorithm)}>
+              {ALGORITHMS.map((a) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
+          </label>
           <button onClick={handleRun} disabled={!activeProblem || running}>
             {running ? 'Running...' : 'Run'}
           </button>
+          {/* Label changes while it runs, like every Python button already
+              does. Verification gets a 20s leash, so a button that only went
+              grey left the longest action on this panel as the one with the
+              least feedback. */}
           <button
             onClick={handleVerifyComparator}
             disabled={!activeProblem || running || pythonRunning}
             title="Check that this problem's comparator is a valid ordering — a broken one makes a correct sort return a wrong answer with no error"
           >
-            Verify comparator
+            {pythonRunning ? `Verifying... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Verify comparator'}
           </button>
         </div>
       )}
@@ -424,20 +451,23 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
       {mode === 'python' && (
         <div className="python-authoring">
           <div className="mode-toggle sub-toggle">
-            <button className={pythonSubMode === 'problem' ? 'active' : ''} onClick={() => setPythonSubMode('problem')}>Problem</button>
-            <button className={pythonSubMode === 'algorithm' ? 'active' : ''} onClick={() => setPythonSubMode('algorithm')}>Algorithm</button>
-            <button className={pythonSubMode === 'comparator' ? 'active' : ''} onClick={() => setPythonSubMode('comparator')}>Comparator</button>
+            <button aria-pressed={pythonSubMode === 'problem'} className={pythonSubMode === 'problem' ? 'active' : ''} onClick={() => setPythonSubMode('problem')}>Problem</button>
+            <button aria-pressed={pythonSubMode === 'algorithm'} className={pythonSubMode === 'algorithm' ? 'active' : ''} onClick={() => setPythonSubMode('algorithm')}>Algorithm</button>
+            <button aria-pressed={pythonSubMode === 'comparator'} className={pythonSubMode === 'comparator' ? 'active' : ''} onClick={() => setPythonSubMode('comparator')}>Comparator</button>
           </div>
 
           {pythonSubMode === 'problem' && (
             <>
               <PythonEditor value={pythonSource} onChange={setPythonSource} readOnly={pythonRunning} />
               <div className="search-controls">
-                <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value as SortAlgorithm)}>
-                  {ALGORITHMS.map((a) => (
-                    <option key={a} value={a}>{a}</option>
-                  ))}
-                </select>
+                <label className="control-label">
+                  Algorithm
+                  <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value as SortAlgorithm)}>
+                    {ALGORITHMS.map((a) => (
+                      <option key={a} value={a}>{a}</option>
+                    ))}
+                  </select>
+                </label>
                 <button onClick={handlePythonRun} disabled={pythonRunning}>
                   {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run'}
                 </button>
@@ -466,8 +496,8 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
           {pythonSubMode === 'comparator' && (
             <>
               <div className="search-controls">
-                <label>
-                  Values (comma-separated):{' '}
+                <label className="control-label">
+                  Values (comma-separated)
                   <input
                     type="text"
                     value={pythonComparatorValuesText}
@@ -478,11 +508,14 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
               </div>
               <PythonEditor value={pythonComparatorSource} onChange={setPythonComparatorSource} readOnly={pythonRunning} />
               <div className="search-controls">
-                <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value as SortAlgorithm)}>
-                  {ALGORITHMS.map((a) => (
-                    <option key={a} value={a}>{a}</option>
-                  ))}
-                </select>
+                <label className="control-label">
+                  Algorithm
+                  <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value as SortAlgorithm)}>
+                    {ALGORITHMS.map((a) => (
+                      <option key={a} value={a}>{a}</option>
+                    ))}
+                  </select>
+                </label>
                 <button onClick={handlePythonComparatorRun} disabled={pythonRunning}>
                   {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run'}
                 </button>
@@ -528,6 +561,17 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
           Click "New Dataset" or write your own Problem class, or ask your agent to author one
           (sort_author_dataset / sort_author_custom / sort_author_python_problem).
         </p>
+      )}
+
+      {/* Immediately above the canvas, because it labels what is drawn there
+          -- and outside the mode blocks, since an agent can replace the active
+          problem while the human's toggle sits anywhere. */}
+      {activeProblem && (
+        <ActiveProblemBar
+          {...describeProblem(activeProblem)}
+          problemId={activeProblem.problem_id}
+          origin={activeProblem.origin}
+        />
       )}
 
       {/* Matches SearchPanel, which has wrapped its canvases since custom code

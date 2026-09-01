@@ -55,7 +55,10 @@ export const ALGORITHM_FUNC: Record<SearchAlgorithm, string> = {
 // uniform_cost do not.
 const TAKES_HEURISTIC = new Set<SearchAlgorithm>(['a_star', 'best_first', 'hill_climbing']);
 
-const HEURISTIC_METHOD: Record<string, string> = {
+// Exported so verifyHeuristic.ts can point the verifier at a BUILT-IN
+// heuristic by method name, the same way the run path does -- see
+// verifyBuiltinHeuristic there.
+export const HEURISTIC_METHOD: Record<string, string> = {
   manhattan_distance: 'manhattan_distance_heuristic',
   euclidean_distance: 'euclidean_distance_heuristic',
   attacking_queen_pairs: 'attacking_queen_pairs_heuristic',

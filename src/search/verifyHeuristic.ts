@@ -31,6 +31,7 @@
 // edge -- so it stays fully meaningful even when exploration was truncated.
 import { runUntrusted } from '../pyodide/workerBridge';
 import { buildAnyProblemConstructionPython } from './runPythonHeuristic';
+import { HEURISTIC_METHOD, assertHeuristicApplies } from './runAlgorithm';
 import { PY_SAFE_JSON_HELPER } from '../pyodide/pySafeJson';
 import type { AuthoredProblem } from './types';
 import type { FriendlyError } from '../pyodide/friendlyErrors';
@@ -245,7 +246,46 @@ export async function verifyHeuristic(
   heuristicSource: string,
   budget: number = DEFAULT_STATE_BUDGET
 ): Promise<VerifyHeuristicResult> {
-  const extraGlobals: Record<string, string> = { _student_heuristic_source: heuristicSource };
+  return runVerification(problem, EXEC_STUDENT_HEURISTIC, { _student_heuristic_source: heuristicSource }, budget);
+}
+
+// The same check, pointed at one of the problem's OWN heuristic methods rather
+// than at authored source.
+//
+// This exists because the two families had asymmetric reach: sort could verify
+// any active problem's comparator straight from the built-in controls, while
+// search could only verify a heuristic you had typed into the Heuristic
+// sub-tab. So the one heuristic a newcomer is most likely to be curious about
+// -- is manhattan_distance actually admissible on this maze? -- was the one
+// the feature could not answer. A built-in heuristic is a METHOD on the problem
+// object, not a free function, so it cannot be routed through the student-source
+// path (which execs into its own globals, where `problem` does not exist); it
+// gets a one-line closure over the already-constructed `problem` instead.
+export async function verifyBuiltinHeuristic(
+  problem: AuthoredProblem,
+  heuristic: string,
+  budget: number = DEFAULT_STATE_BUDGET
+): Promise<VerifyHeuristicResult> {
+  try {
+    assertHeuristicApplies(problem, heuristic);
+  } catch (err) {
+    return { ok: false, kind: 'internal', friendly_error: err instanceof Error ? err.message : String(err) };
+  }
+  const define = `def _HeuristicFn(state):\n    return problem.${HEURISTIC_METHOD[heuristic]}(state)\n`;
+  return runVerification(problem, define, {}, budget);
+}
+
+// Shared core: everything except how `_HeuristicFn` comes into existence is
+// identical between the two entry points above, and must stay identical -- a
+// verdict that meant different things depending on where the heuristic came
+// from would be worse than no verdict.
+async function runVerification(
+  problem: AuthoredProblem,
+  defineHeuristicPython: string,
+  seedGlobals: Record<string, string>,
+  budget: number
+): Promise<VerifyHeuristicResult> {
+  const extraGlobals: Record<string, string> = { ...seedGlobals };
   let problemConstructionPython: string;
   try {
     problemConstructionPython = buildAnyProblemConstructionPython(problem, extraGlobals);
@@ -258,7 +298,7 @@ export async function verifyHeuristic(
   const python = `
 import json
 ${problemConstructionPython}
-${EXEC_STUDENT_HEURISTIC}
+${defineHeuristicPython}
 ${PY_VERIFY_HELPER}
 ${PY_SAFE_JSON_HELPER}
 _report = _polyraptor_verify(problem, _HeuristicFn, ${safeBudget})

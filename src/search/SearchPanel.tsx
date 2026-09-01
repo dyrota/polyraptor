@@ -6,8 +6,9 @@ import { runSearchAlgorithm } from './runAlgorithm';
 import { authorPythonSearchProblem, runAlgorithmOnPythonSearchProblem } from './runPythonProblem';
 import { authorPythonSearchAlgorithm, runPythonAlgorithmOnProblem } from './runPythonAlgorithm';
 import { authorPythonSearchHeuristic, runPythonHeuristicOnProblem } from './runPythonHeuristic';
-import { verifyHeuristic } from './verifyHeuristic';
+import { verifyHeuristic, verifyBuiltinHeuristic } from './verifyHeuristic';
 import { VerificationCard } from './VerificationCard';
+import { ActiveProblemBar } from '../shared/ActiveProblemBar';
 import { forceStop } from '../pyodide/workerBridge';
 import { MazeCanvas } from './MazeCanvas';
 import { NQueensBoard } from './NQueensBoard';
@@ -21,7 +22,7 @@ import { usePersistedSource } from '../shared/persistentState';
 import { humanAction, noteHumanAction } from '../shared/activityLog';
 import type { SharedPayload } from '../shared/shareLink';
 import { SEARCH_PROBLEM_TEMPLATE, SEARCH_ALGORITHM_TEMPLATE, SEARCH_HEURISTIC_TEMPLATE } from './pythonTemplates';
-import type { SearchAlgorithm, SearchTrace } from './types';
+import type { AuthoredProblem, SearchAlgorithm, SearchTrace } from './types';
 
 const ALGORITHMS: SearchAlgorithm[] = [
   'a_star',
@@ -37,6 +38,35 @@ const ALGORITHMS: SearchAlgorithm[] = [
 // Only these three built-in algorithms accept a heuristic at all -- a custom
 // heuristic is meaningless against breadth_first/depth_first/etc.
 const HEURISTIC_ALGORITHMS: Array<'a_star' | 'best_first' | 'hill_climbing'> = ['a_star', 'best_first', 'hill_climbing'];
+
+// What the ActiveProblemBar says about a search problem. Kept beside the panel
+// that renders it rather than on the type, because it is presentation: the
+// point is a human reading "Maze · 12 × 16 · start (0,0) → goal (11,15)" and
+// knowing at a glance that the canvas below is not the built-in dataset the
+// controls above happen to be set to.
+function describeProblem(problem: AuthoredProblem): { kind: string; detail?: string } {
+  switch (problem.type) {
+    case 'maze':
+      return {
+        kind: 'Maze',
+        detail:
+          problem.maze && problem.start && problem.goal
+            ? `${problem.maze.length} × ${problem.maze[0].length} · start (${problem.start.join(', ')}) → goal (${problem.goal.join(', ')})`
+            : undefined,
+      };
+    case 'n_queens':
+      return { kind: 'N-Queens', detail: `${problem.n} queens on a ${problem.n} × ${problem.n} board` };
+    case 'missionaries_and_cannibals':
+      return { kind: 'Missionaries & cannibals', detail: '3 missionaries, 3 cannibals, one boat' };
+    case 'python_problem': {
+      const ops = problem.preview?.operator_count;
+      return {
+        kind: 'Your Python problem',
+        detail: ops === undefined ? undefined : `${ops} operator${ops === 1 ? '' : 's'}`,
+      };
+    }
+  }
+}
 
 // This panel is deliberately usable by a human directly (New Maze / Run
 // buttons) AND by an agent via the search_*/playback_* WebMCP tools, both
@@ -114,7 +144,14 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
 
   function handleNewMaze() {
     const generated = generateMaze({ rows: 12, cols: 16, wallDensity: 0.3 });
-    putProblem({ problem_id: newProblemId('maze'), type: 'maze', maze: generated.maze, start: generated.start, goal: generated.goal });
+    putProblem({
+      problem_id: newProblemId('maze'),
+      type: 'maze',
+      origin: 'human',
+      maze: generated.maze,
+      start: generated.start,
+      goal: generated.goal,
+    });
     // Synchronous: maze generation is pure JS, so there is no running state to
     // show -- unlike every other action here, which goes through Pyodide.
     noteHumanAction('search', 'New Maze', { rows: 12, cols: 16, wall_density: 0.3 });
@@ -186,6 +223,7 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
         const problem = {
           problem_id: problemId,
           type: 'python_problem' as const,
+          origin: 'human' as const,
           source_code: pythonSource,
           preview: {
             initial_state: authored.initial_state,
@@ -325,35 +363,93 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
     }
   }
 
+  // The built-in counterpart to handleVerifyHeuristic, and the reason
+  // verifyBuiltinHeuristic exists: "is manhattan_distance actually admissible
+  // on this maze?" is the question a newcomer is most likely to have, and it
+  // was previously unaskable without first retyping the heuristic into the
+  // Python tab. Mirrors the sort family, where Verify has always sat directly
+  // in the built-in controls.
+  async function handleVerifyBuiltinHeuristic() {
+    if (!activeProblem) return;
+    const builtin = builtinHeuristicFor(activeProblem.type);
+    if (!builtin) return;
+    setPythonError(null);
+    setPythonRunning(true);
+    setElapsedMs(0);
+    try {
+      await humanAction('search', 'Verify heuristic', { heuristic: builtin, problem_id: activeProblem.problem_id }, async () => {
+        const result = await verifyBuiltinHeuristic(activeProblem, builtin);
+        if (!result.ok) {
+          setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
+          return result;
+        }
+        setVerification({
+          problem_id: activeProblem.problem_id,
+          heuristic_id: null,
+          source_code: `# built-in: ${builtin}`,
+          report: result.report!,
+          at: Date.now(),
+        });
+        return result;
+      });
+    } catch (err) {
+      setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setPythonRunning(false);
+    }
+  }
+
   function handleStop() {
     forceStop();
     setPythonRunning(false);
   }
 
+  const builtinHeuristic = activeProblem ? builtinHeuristicFor(activeProblem.type) : undefined;
+
   return (
     <div className="search-panel">
       <div className="mode-toggle">
-        <button className={mode === 'builtin' ? 'active' : ''} onClick={() => setMode('builtin')}>Built-in</button>
-        <button className={mode === 'python' ? 'active' : ''} onClick={() => setMode('python')}>Write your own</button>
+        <button aria-pressed={mode === 'builtin'} className={mode === 'builtin' ? 'active' : ''} onClick={() => setMode('builtin')}>Built-in</button>
+        <button aria-pressed={mode === 'python'} className={mode === 'python' ? 'active' : ''} onClick={() => setMode('python')}>Write your own</button>
       </div>
 
       {mode === 'builtin' && (
         <div className="search-controls">
           <button onClick={handleNewMaze}>New Maze</button>
-          <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value as SearchAlgorithm)}>
-            {ALGORITHMS.map((a) => (
-              <option key={a} value={a}>{a}</option>
-            ))}
-          </select>
-          {activeProblem?.type === 'maze' && (
-            <select value={heuristic} onChange={(e) => setHeuristic(e.target.value)}>
-              <option value="">no heuristic</option>
-              <option value="manhattan_distance">manhattan_distance</option>
-              <option value="euclidean_distance">euclidean_distance</option>
+          {/* Wrapped in a <label> rather than given a bare aria-label: an
+              unlabelled dropdown reading "a_star" is as opaque to a sighted
+              newcomer as it is to a screen reader, and the row already wraps. */}
+          <label className="control-label">
+            Algorithm
+            <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value as SearchAlgorithm)}>
+              {ALGORITHMS.map((a) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
             </select>
+          </label>
+          {activeProblem?.type === 'maze' && (
+            <label className="control-label">
+              Heuristic
+              <select value={heuristic} onChange={(e) => setHeuristic(e.target.value)}>
+                <option value="">no heuristic</option>
+                <option value="manhattan_distance">manhattan_distance</option>
+                <option value="euclidean_distance">euclidean_distance</option>
+              </select>
+            </label>
           )}
           <button onClick={handleRun} disabled={!activeProblem || running}>
             {running ? 'Running...' : 'Run'}
+          </button>
+          <button
+            onClick={handleVerifyBuiltinHeuristic}
+            disabled={!activeProblem || !builtinHeuristic || running || pythonRunning}
+            title={
+              builtinHeuristic
+                ? `Check whether ${builtinHeuristic} is admissible and consistent on this problem, against exhaustively computed ground truth`
+                : 'Pick a heuristic first — there is nothing to verify without one'
+            }
+          >
+            {pythonRunning ? `Verifying... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Verify heuristic'}
           </button>
         </div>
       )}
@@ -361,20 +457,23 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
       {mode === 'python' && (
         <div className="python-authoring">
           <div className="mode-toggle sub-toggle">
-            <button className={pythonSubMode === 'problem' ? 'active' : ''} onClick={() => setPythonSubMode('problem')}>Problem</button>
-            <button className={pythonSubMode === 'algorithm' ? 'active' : ''} onClick={() => setPythonSubMode('algorithm')}>Algorithm</button>
-            <button className={pythonSubMode === 'heuristic' ? 'active' : ''} onClick={() => setPythonSubMode('heuristic')}>Heuristic</button>
+            <button aria-pressed={pythonSubMode === 'problem'} className={pythonSubMode === 'problem' ? 'active' : ''} onClick={() => setPythonSubMode('problem')}>Problem</button>
+            <button aria-pressed={pythonSubMode === 'algorithm'} className={pythonSubMode === 'algorithm' ? 'active' : ''} onClick={() => setPythonSubMode('algorithm')}>Algorithm</button>
+            <button aria-pressed={pythonSubMode === 'heuristic'} className={pythonSubMode === 'heuristic' ? 'active' : ''} onClick={() => setPythonSubMode('heuristic')}>Heuristic</button>
           </div>
 
           {pythonSubMode === 'problem' && (
             <>
               <PythonEditor value={pythonSource} onChange={setPythonSource} readOnly={pythonRunning} />
               <div className="search-controls">
-                <select value={pythonAlgorithm} onChange={(e) => setPythonAlgorithm(e.target.value as SearchAlgorithm)}>
-                  {ALGORITHMS.map((a) => (
-                    <option key={a} value={a}>{a}</option>
-                  ))}
-                </select>
+                <label className="control-label">
+                  Algorithm
+                  <select value={pythonAlgorithm} onChange={(e) => setPythonAlgorithm(e.target.value as SearchAlgorithm)}>
+                    {ALGORITHMS.map((a) => (
+                      <option key={a} value={a}>{a}</option>
+                    ))}
+                  </select>
+                </label>
                 <button onClick={handlePythonRun} disabled={pythonRunning}>
                   {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run'}
                 </button>
@@ -404,14 +503,17 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
             <>
               <PythonEditor value={pythonHeuristicSource} onChange={setPythonHeuristicSource} readOnly={pythonRunning} />
               <div className="search-controls">
-                <select
-                  value={pythonHeuristicAlgorithm}
-                  onChange={(e) => setPythonHeuristicAlgorithm(e.target.value as 'a_star' | 'best_first' | 'hill_climbing')}
-                >
-                  {HEURISTIC_ALGORITHMS.map((a) => (
-                    <option key={a} value={a}>{a}</option>
-                  ))}
-                </select>
+                <label className="control-label">
+                  Algorithm
+                  <select
+                    value={pythonHeuristicAlgorithm}
+                    onChange={(e) => setPythonHeuristicAlgorithm(e.target.value as 'a_star' | 'best_first' | 'hill_climbing')}
+                  >
+                    {HEURISTIC_ALGORITHMS.map((a) => (
+                      <option key={a} value={a}>{a}</option>
+                    ))}
+                  </select>
+                </label>
                 <button onClick={handlePythonHeuristicRun} disabled={pythonRunning || !activeProblem}>
                   {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run against active problem'}
                 </button>
@@ -452,6 +554,18 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
           Click "New Maze" or write your own Problem class, or ask your agent to author one (search_author_maze /
           search_author_n_queens / search_author_missionaries_and_cannibals / search_author_python_problem).
         </p>
+      )}
+
+      {/* Immediately above the result area, because it labels what is drawn
+          there -- and outside the mode blocks, for the same reason the result
+          area is: an agent can replace the active problem while the human's
+          toggle sits anywhere. */}
+      {activeProblem && (
+        <ActiveProblemBar
+          {...describeProblem(activeProblem)}
+          problemId={activeProblem.problem_id}
+          origin={activeProblem.origin}
+        />
       )}
 
       {/* A custom (tier-2) algorithm's events have no guaranteed shape even

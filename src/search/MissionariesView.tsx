@@ -20,13 +20,14 @@ export function MissionariesView({ trace }: { trace: SearchTrace | null }) {
   const rightM = 3 - leftM;
   const rightC = 3 - leftC;
 
-  const Bank = ({ m, c, hasBoat }: { m: number; c: number; hasBoat: boolean }) => (
-    <div className="mc-bank">
-      <div className="mc-icons">
+  const Bank = ({ label, m, c, hasBoat }: { label: string; m: number; c: number; hasBoat: boolean }) => (
+    <div className="mc-bank" role="img" aria-label={`${label}: ${m} missionaries, ${c} cannibals${hasBoat ? ', boat here' : ''}`}>
+      <span className="mc-bank-label">{label}</span>
+      <div className="mc-icons" aria-hidden="true">
         {Array.from({ length: m }).map((_, i) => <span key={`m${i}`}>🧑‍🦱</span>)}
         {Array.from({ length: c }).map((_, i) => <span key={`c${i}`}>😈</span>)}
       </div>
-      {hasBoat && <div className="mc-boat">⛵</div>}
+      {hasBoat && <div className="mc-boat" aria-hidden="true">⛵</div>}
     </div>
   );
 
@@ -36,9 +37,9 @@ export function MissionariesView({ trace }: { trace: SearchTrace | null }) {
   return (
     <div className="mc-view">
       <div className="mc-wrapper">
-        <Bank m={leftM} c={leftC} hasBoat={boatPosition === 1} />
-        <div className="mc-river">river</div>
-        <Bank m={rightM} c={rightC} hasBoat={boatPosition === 0} />
+        <Bank label="start bank" m={leftM} c={leftC} hasBoat={boatPosition === 1} />
+        <div className="mc-river" aria-hidden="true">river</div>
+        <Bank label="goal bank" m={rightM} c={rightC} hasBoat={boatPosition === 0} />
       </div>
       <p className="mc-caption">
         {finalState

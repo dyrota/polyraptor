@@ -17,7 +17,14 @@ export function NQueensBoard({ problem, trace }: { problem: AuthoredProblem; tra
 
   return (
     <div className="nqueens-wrapper">
-      <svg width={n * cell} height={n * cell}>
+      <svg
+        width={n * cell}
+        height={n * cell}
+        role="img"
+        aria-label={`${n} by ${n} board with ${liveState.length} of ${n} queens placed${
+          liveState.length ? `, in rows ${liveState.join(', ')} reading left to right` : ''
+        }`}
+      >
         {Array.from({ length: n }).map((_, row) =>
           Array.from({ length: n }).map((_, col) => (
             <rect

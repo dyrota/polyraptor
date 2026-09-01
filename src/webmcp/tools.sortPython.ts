@@ -55,6 +55,7 @@ export const sortPythonTools: ToolDefinition<never>[] = [
       putProblem({
         problem_id: problemId,
         dataset_type: 'python_problem',
+        origin: 'agent',
         size: result.size!,
         values: result.values!,
         source_code: args.source_code,
@@ -211,6 +212,7 @@ export const sortPythonTools: ToolDefinition<never>[] = [
         putProblem({
           problem_id: problemId,
           dataset_type: 'python_problem',
+          origin: 'agent',
           size: result.size!,
           values: result.values!,
           source_code: result.synthetic_source!,

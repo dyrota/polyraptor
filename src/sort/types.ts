@@ -1,3 +1,5 @@
+import type { Actor } from '../shared/activityLog';
+
 // Discriminated union for polysort's on_step events, verified directly
 // against the actual instrumented source in all 10 algorithm files (Phase 1)
 // — not guessed from the plan doc's schema sketch. Buffer names vary by
@@ -69,6 +71,8 @@ export interface AuthoredSortProblem {
   problem_id: string;
   dataset_type: SortDatasetType;
   size: number;
+  // See search/types.ts's AuthoredProblem.origin -- same field, same reason.
+  origin?: Actor;
   // Always populated at author time (dataset generation happens once in
   // Python, values come back to JS) so the bar canvas has something to show
   // immediately, before any algorithm has run — mirrors search's

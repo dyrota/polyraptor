@@ -78,7 +78,9 @@ check('unknown trace_id error mentions get_state', /get_state/.test(badTrace.mes
 
 // ---------------------------------------------------------------------------
 console.log('\n=== sort: the agent can see a dataset the HUMAN created ===');
-await page.getByRole('button', { name: 'Sort', exact: true }).click();
+// role 'tab', not 'button': the family switcher is a real tablist now, and
+// role="tab" replaces a <button>'s implicit role in the accessibility tree.
+await page.getByRole('tab', { name: 'Sort', exact: true }).click();
 await page.waitForTimeout(200);
 await page.getByRole('button', { name: 'New Dataset' }).click();
 await page.waitForTimeout(1500);

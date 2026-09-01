@@ -127,19 +127,24 @@ export function BarArrayCanvas({
     }
 
     // Auxiliary buffer strips (key/left/right/count/output/negatives/...).
+    // Index i of a buffer is drawn at the SAME x as index i of the main array,
+    // so "output[3] just got written" lines up under the bar it came from.
+    // The name used to sit in a 60px left gutter that pushed every aux bar out
+    // of register with the row above -- it is drawn above the strip now, where
+    // it costs no horizontal space.
     let auxY = mainBottom + 10;
     for (const bufferName of auxBuffers) {
       const values = visual?.auxiliary[bufferName] ?? {};
       ctx.fillStyle = '#b3bac2';
-      ctx.font = '11px ui-monospace, monospace';
+      ctx.font = '10px ui-monospace, monospace';
       ctx.textAlign = 'left';
-      ctx.fillText(bufferName, 4, auxY + 12);
+      ctx.fillText(bufferName, 2, auxY + 8);
       const entries = Object.entries(values);
       const auxMax = Math.max(1, ...entries.map(([, v]) => v));
       for (const [idxStr, value] of entries) {
         const idx = Number(idxStr);
         const barHeight = Math.max(2, (value / auxMax) * (AUX_HEIGHT - 16));
-        const x = 60 + idx * (barWidth + MIN_BAR_GAP);
+        const x = idx * (barWidth + MIN_BAR_GAP);
         ctx.fillStyle = VIZ.purple;
         ctx.fillRect(x, auxY + AUX_HEIGHT - 4 - barHeight, Math.max(2, barWidth), barHeight);
       }
@@ -154,9 +159,22 @@ export function BarArrayCanvas({
     ctx.fillText(statusText, 4, height - 6);
   }, [problem, trace, trace?.currentSeq, trace?.entries.length, counterexample]);
 
+  // Same reasoning as MazeCanvas's: assembled from fields already to hand, not
+  // from a second replay of the trace.
+  const description =
+    `Bar chart of ${problem.values.length} values` +
+    (trace
+      ? `. Showing ${trace.algorithm}, step ${trace.currentSeq + 1} of ${trace.entries.length}` +
+        (trace.summary.comparisons !== undefined ? `, ${trace.summary.comparisons} comparisons and ${trace.summary.swaps} swaps in total` : '') +
+        '.'
+      : '. No algorithm has been run on it yet.') +
+    (counterexample?.length
+      ? ` Comparator counterexample values marked: ${counterexample.map((m) => `${m.role} = ${m.value}`).join(', ')}.`
+      : '');
+
   return (
     <div className="bar-canvas-wrapper">
-      <canvas ref={canvasRef} />
+      <canvas ref={canvasRef} role="img" aria-label={description} />
       <div className="maze-legend">
         <span>
           <i className="swatch" style={{ background: VIZ.sky }} /> unsorted

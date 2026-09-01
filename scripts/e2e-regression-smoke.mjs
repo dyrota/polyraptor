@@ -179,6 +179,81 @@ if (!exposesAnnotations) {
 }
 
 // ---------------------------------------------------------------------------
+console.log('\n=== 9. missionaries banks follow the state, not the boat ===');
+// polysearch's (m, c, boat) counts are always the number still on the STARTING
+// bank. Conditioning them on boat position inverted every state where the boat
+// was on the right -- including the goal (0,0,0), which drew all six people
+// still on the left under a caption saying they had crossed.
+const mc = await call('search_author_missionaries_and_cannibals', {});
+const mcRun = await call('search_run_algorithm', { problem_id: mc.problem_id, algorithm: 'breadth_first' });
+await call('playback_jump_to', { trace_id: mcRun.trace_id, seq: mcRun.trace_length - 1 });
+await page.waitForTimeout(300);
+const banks = await page.$$eval('.mc-bank', (els) => els.map((e) => e.getAttribute('aria-label') ?? ''));
+check(
+  'at the goal state the start bank is empty',
+  /start bank: 0 missionaries, 0 cannibals/.test(banks[0] ?? ''),
+  JSON.stringify(banks)
+);
+check(
+  '  -> and everyone is on the goal bank, with the boat',
+  /goal bank: 3 missionaries, 3 cannibals, boat here/.test(banks[1] ?? ''),
+  JSON.stringify(banks)
+);
+// The caption belongs under the scene, not as a third flex column beside it.
+const captionBelow = await page.evaluate(() => {
+  const cap = document.querySelector('.mc-caption');
+  const bank = document.querySelector('.mc-bank');
+  return cap && bank ? cap.getBoundingClientRect().top >= bank.getBoundingClientRect().bottom - 1 : false;
+});
+check('missionaries caption renders below the banks', captionBelow);
+
+// ---------------------------------------------------------------------------
+console.log('\n=== 10. propose_heuristic produces a complete run summary ===');
+// It used to hand its trace a hand-built {path_found, cost}, so the panel
+// rendered "path length , cost 18,  states expanded" with two blanks and the
+// solution path was never painted (MazeCanvas colours summary.path).
+const pMaze = await call('search_author_maze', { rows: 10, cols: 10, wall_density: 0.25, seed: 7 });
+await call('search_propose_heuristic', { problem_id: pMaze.problem_id, weights: { manhattan_distance: 1 }, algorithm: 'a_star' });
+await page.waitForTimeout(400);
+const proposeSummary = await page.locator('.search-summary').innerText();
+check(
+  'on-page summary has no blank fields',
+  /path length \d+, cost \d+, \d+ states expanded/.test(proposeSummary),
+  JSON.stringify(proposeSummary)
+);
+const proposeState = await call('search_get_state', {});
+check(
+  '  -> and the trace carries the path for the canvas to paint',
+  Array.isArray(proposeState.active_trace?.summary?.path) && proposeState.active_trace.summary.path.length > 0,
+  JSON.stringify(proposeState.active_trace?.summary ?? null).slice(0, 200)
+);
+
+// ---------------------------------------------------------------------------
+console.log('\n=== 11. the family switcher is a keyboard-operable tablist ===');
+// role="tablist" is a promise about keyboard behaviour; announcing the role and
+// then ignoring arrow keys leaves a keyboard user worse off than plain buttons.
+await page.getByRole('tab', { name: 'Search', exact: true }).focus();
+await page.keyboard.press('ArrowRight');
+await page.waitForTimeout(200);
+const afterArrow = await page.evaluate(() => ({
+  selected: [...document.querySelectorAll('[role=tab]')].map((t) => t.getAttribute('aria-selected')),
+  focused: document.activeElement?.id ?? null,
+  roving: [...document.querySelectorAll('[role=tab]')].map((t) => t.getAttribute('tabindex')),
+}));
+check(
+  'ArrowRight moves selection and focus to the next tab',
+  afterArrow.selected[1] === 'true' && afterArrow.focused === 'tab-sort',
+  JSON.stringify(afterArrow)
+);
+check('  -> with a roving tabindex, so Tab enters the tablist once', afterArrow.roving.join(',') === '-1,0', JSON.stringify(afterArrow.roving));
+await page.keyboard.press('ArrowLeft');
+await page.waitForTimeout(200);
+check(
+  'ArrowLeft moves back',
+  (await page.evaluate(() => document.activeElement?.id)) === 'tab-search'
+);
+
+// ---------------------------------------------------------------------------
 console.log('\n=== page errors ===');
 if (pageErrors.length) {
   console.log(pageErrors.join('\n---\n'));

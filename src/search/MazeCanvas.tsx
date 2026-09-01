@@ -5,6 +5,23 @@ import { VIZ, BRAND } from '../shared/vizColors';
 
 const CELL_SIZE = 28;
 
+// Walls were #010409 against a #161b22 floor -- a contrast ratio of 1.19:1,
+// which is to say invisible. Before any algorithm has run, the maze is drawn
+// entirely from these two colours, so the app's hero visual sat on screen as a
+// featureless grey rectangle until you pressed Run.
+//
+// Two dark fills cannot be pulled far apart: even at the extremes this palette
+// allows, the ratio only reaches about 2:1, and pushing the floor lighter eats
+// the separation from the saturated state colours drawn on top of it. So the
+// fix is not more luminance -- it is inverting which one is the mark. The wall
+// becomes a mid-tone slate (2.18:1 against the floor, and >=2.8:1 against every
+// VIZ hue), the floor drops to the page ground so the maze reads as carved out
+// of it, and walls are drawn WITHOUT the per-cell grid stroke so adjacent ones
+// merge into one solid mass instead of a field of separate tiles.
+const FLOOR = '#0d1117';
+const WALL = '#454c56';
+const GRID = '#252b33';
+
 // Canvas rendering is kept imperative and outside React's reconciliation —
 // per the plan doc, this is a ref + effect-driven draw loop, not per-cell JSX.
 // counterexample: the state a heuristic verification refuted the heuristic on.
@@ -48,8 +65,8 @@ export function MazeCanvas({
         const state: [number, number] = [r, c];
         const key = JSON.stringify(state);
 
-        let fill = '#161b22';
-        if (isWall) fill = '#010409';
+        let fill = FLOOR;
+        if (isWall) fill = WALL;
         else if (pathSet.has(key)) fill = VIZ.green;
         else if (visual && isStateIn(visual.expanded, state)) fill = VIZ.blue;
         else if (visual && isStateIn(visual.frontier, state)) fill = VIZ.yellow;
@@ -57,8 +74,12 @@ export function MazeCanvas({
 
         ctx.fillStyle = fill;
         ctx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
-        ctx.strokeStyle = '#30363d';
-        ctx.strokeRect(x, y, CELL_SIZE, CELL_SIZE);
+        // Open cells only: stroking walls too would cut the solid mass back
+        // into tiles and undo the separation the fill just bought.
+        if (!isWall) {
+          ctx.strokeStyle = GRID;
+          ctx.strokeRect(x + 0.5, y + 0.5, CELL_SIZE - 1, CELL_SIZE - 1);
+        }
       }
     }
 
@@ -107,9 +128,25 @@ export function MazeCanvas({
     }
   }, [problem, trace, trace?.currentSeq, trace?.entries.length, counterexample]);
 
+  // Built from fields that are already to hand rather than from the derived
+  // visual state -- describing "12 cells expanded" would mean replaying the
+  // whole trace a second time on every render, and this is a label, not a
+  // second rendering of the picture.
+  const rows = problem.maze?.length ?? 0;
+  const cols = problem.maze?.[0]?.length ?? 0;
+  const description =
+    `Maze grid, ${rows} rows by ${cols} columns` +
+    (problem.start && problem.goal
+      ? `, start at row ${problem.start[0]} column ${problem.start[1]}, goal at row ${problem.goal[0]} column ${problem.goal[1]}`
+      : '') +
+    (trace
+      ? `. Showing ${trace.algorithm}, step ${trace.currentSeq + 1} of ${trace.entries.length}.`
+      : '. No algorithm has been run on it yet.') +
+    (counterexample ? ` A heuristic counterexample is marked at row ${counterexample[0]} column ${counterexample[1]}.` : '');
+
   return (
     <div className="maze-canvas-wrapper">
-      <canvas ref={canvasRef} />
+      <canvas ref={canvasRef} role="img" aria-label={description} />
       <div className="maze-legend">
         <span><i className="swatch" style={{ background: VIZ.blue }} /> expanded</span>
         <span><i className="swatch" style={{ background: VIZ.yellow }} /> frontier</span>

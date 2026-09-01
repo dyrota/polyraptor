@@ -57,6 +57,7 @@ export const searchPythonTools: ToolDefinition<never>[] = [
       putProblem({
         problem_id: problemId,
         type: 'python_problem',
+        origin: 'agent',
         source_code: args.source_code,
         preview: {
           initial_state: result.initial_state,

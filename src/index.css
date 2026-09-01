@@ -138,9 +138,14 @@ button, select, input {
 }
 
 /* Shared base for every clickable control in the app -- one place for
-   hover/active/disabled feedback instead of relying on browser defaults. */
+   hover/active/disabled feedback instead of relying on browser defaults.
+   `input` belongs in this list as much as button/select does: it was left out,
+   so the size box and the comparator values field rendered as raw browser
+   widgets -- 21px tall with a 2px inset bevel and no radius -- sitting in a row
+   of 32px flat-dark controls. */
 .search-controls button,
 .search-controls select,
+.search-controls input,
 .mode-toggle button,
 .playback-bar button,
 .python-error-toggle {
@@ -160,7 +165,68 @@ button, select, input {
 .playback-bar button:active:not(:disabled) { transform: translateY(1px); }
 .search-controls button:disabled { opacity: 0.5; cursor: not-allowed; }
 .search-controls select { padding: 0.42rem 0.6rem; }
+.search-controls input {
+  padding: 0.42rem 0.6rem;
+  cursor: text; /* inherited `cursor: pointer` above is wrong for a text field */
+  font-family: var(--mono);
+}
+.search-controls input:hover { border-color: var(--text-muted); }
 .search-empty { color: var(--text-muted); }
+
+/* A control and the word for what it does, as one unit. Every <select> here
+   used to sit bare in the row, so "a_star" and "manhattan_distance" were two
+   unlabelled dropdowns you had to already know the meaning of -- opaque to a
+   newcomer and, with no associated <label>, to a screen reader as well. */
+.control-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+/* ---- Active problem bar -------------------------------------------------
+   Names what is on screen. Sits directly on top of the result area and reads
+   as a caption for it, not as another control -- hence no border-radius on the
+   bottom edge and a quieter ground than the panel. */
+.active-problem {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.6rem;
+  padding: 0.45rem 0.7rem;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+.active-problem-kind { font-weight: 600; color: var(--text); }
+.active-problem-detail { color: var(--text-secondary); font-family: var(--mono); font-size: 0.8rem; }
+.active-problem-id {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  word-break: break-all;
+}
+/* Same two colours the activity log uses for the same two actors -- amber for
+   you, blue for the agent -- so "who made this" reads identically in both
+   places rather than needing to be learned twice. */
+.active-problem-origin {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+}
+.active-problem-origin.origin-human { background: #33260f; color: var(--brand-strong); }
+.active-problem-origin.origin-agent { background: #0d2d4f; color: #79c0ff; }
 
 .mode-toggle { display: flex; gap: 0.25rem; margin-bottom: 1rem; }
 .mode-toggle button.active { background: var(--brand); color: var(--brand-contrast); border-color: var(--brand); font-weight: 600; }
@@ -224,9 +290,15 @@ button, select, input {
   border-radius: 6px;
 }
 
+/* Wraps rather than clipping. A range input has an intrinsic minimum width of
+   roughly 130px that `flex: 1` cannot shrink past, so below ~460px the bar's
+   content outgrew it and the position readout and speed selector were pushed
+   past the right edge with no way to reach them -- silently, since the bar
+   itself neither scrolled nor wrapped. */
 .playback-bar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 1rem;
   padding: 0.6rem 0.75rem;
@@ -234,16 +306,40 @@ button, select, input {
   border: 1px solid var(--border);
   border-radius: 8px;
 }
-.playback-bar input[type="range"] { flex: 1; accent-color: var(--brand); }
+.playback-bar input[type="range"] { flex: 1 1 8rem; min-width: 0; accent-color: var(--brand); }
 .playback-position { font-size: 0.8rem; color: var(--text-secondary); font-family: var(--mono); min-width: 4.5rem; text-align: center; }
 
 .search-summary { margin-top: 0.75rem; font-size: 0.9rem; color: var(--text-secondary); font-family: var(--mono); }
 
 .nqueens-caption, .mc-caption { color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem; }
 
-.mc-wrapper { display: flex; align-items: center; gap: 1rem; }
-.mc-bank { flex: 1; min-height: 100px; border: 2px dashed var(--border-strong); border-radius: 8px; padding: 0.5rem; text-align: center; position: relative; }
-.mc-icons { font-size: 1.5rem; }
+.mc-wrapper { display: flex; align-items: stretch; gap: 1rem; }
+.mc-bank {
+  flex: 1;
+  min-height: 100px;
+  border: 2px dashed var(--border-strong);
+  border-radius: 8px;
+  padding: 0.5rem;
+  text-align: center;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+/* Which bank is which is not guessable from two identical dashed boxes, and it
+   is the whole content of this puzzle -- everyone starts left and has to end
+   right. */
+.mc-bank-label {
+  position: absolute;
+  top: 0.35rem;
+  left: 0;
+  right: 0;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.mc-icons { font-size: 1.5rem; min-height: 1.9rem; }
 .mc-boat { position: absolute; bottom: 4px; right: 8px; font-size: 1.3rem; }
 .mc-river { padding: 0 0.5rem; color: #58a6ff; font-weight: 600; writing-mode: vertical-rl; }
 

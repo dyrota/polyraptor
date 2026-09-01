@@ -1,3 +1,5 @@
+import type { Actor } from '../shared/activityLog';
+
 // Discriminated union for polysearch's on_step events, per the plan doc's
 // "Search" event schema. g/h/f are optional since only some algorithms track
 // them (a_star: all three; best_first: h only; uniform_cost/branch_and_bound: g
@@ -90,6 +92,11 @@ export interface PythonProblemPreview {
 export interface AuthoredProblem {
   problem_id: string;
   type: SearchProblemType;
+  // Who created this. Reuses the activity log's Actor vocabulary rather than
+  // inventing a parallel one -- it is the same distinction, and the whole
+  // point of surfacing it is that "the agent made the thing you are looking
+  // at" should be legible on the panel itself, not only in the log beside it.
+  origin?: Actor;
   // Problem-specific data needed to render + to reconstruct the Python object.
   maze?: number[][];
   start?: MazeState;

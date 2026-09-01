@@ -48,6 +48,7 @@ export const searchTools: ToolDefinition<never>[] = [
         const problem: AuthoredProblem = {
           problem_id: newProblemId('maze'),
           type: 'maze',
+          origin: 'agent',
           maze: generated.maze,
           start: generated.start,
           goal: generated.goal,
@@ -71,7 +72,7 @@ export const searchTools: ToolDefinition<never>[] = [
       'does not support other counts). Returns a problem_id to pass to search_run_algorithm.',
     inputSchema: { type: 'object', properties: {}, required: [] },
     execute: logged('search_author_missionaries_and_cannibals', async () => {
-      const problem: AuthoredProblem = { problem_id: newProblemId('mc'), type: 'missionaries_and_cannibals' };
+      const problem: AuthoredProblem = { problem_id: newProblemId('mc'), type: 'missionaries_and_cannibals', origin: 'agent' };
       putProblem(problem);
       return JSON.stringify({ problem_id: problem.problem_id });
     }),
@@ -86,7 +87,7 @@ export const searchTools: ToolDefinition<never>[] = [
     },
     execute: logged('search_author_n_queens', async (args: { n: number }) => {
       const n = Math.max(4, Math.min(12, Math.floor(args.n)));
-      const problem: AuthoredProblem = { problem_id: newProblemId('nqueens'), type: 'n_queens', n };
+      const problem: AuthoredProblem = { problem_id: newProblemId('nqueens'), type: 'n_queens', origin: 'agent', n };
       putProblem(problem);
       return JSON.stringify({ problem_id: problem.problem_id, n });
     }),

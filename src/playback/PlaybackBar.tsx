@@ -17,17 +17,23 @@ export function PlaybackBar({ traceId }: { traceId: string }) {
 
   return (
     <div className="playback-bar">
-      <button onClick={() => step(traceId, 'backward')} disabled={trace.currentSeq <= -1} title="Step back">⏮</button>
+      {/* aria-label as well as title: the glyph alone is the entire label
+          otherwise, and "⏮" is not a word. */}
+      <button onClick={() => step(traceId, 'backward')} disabled={trace.currentSeq <= -1} title="Step back" aria-label="Step back one event">⏮</button>
       <button onClick={() => (trace.playing ? pause(traceId) : play(traceId, trace.speed))}>
         {trace.playing ? '⏸ Pause' : '▶ Play'}
       </button>
-      <button onClick={() => step(traceId, 'forward')} disabled={trace.currentSeq >= maxSeq} title="Step forward">⏭</button>
+      <button onClick={() => step(traceId, 'forward')} disabled={trace.currentSeq >= maxSeq} title="Step forward" aria-label="Step forward one event">⏭</button>
       <input
         type="range"
         min={-1}
         max={maxSeq}
         value={trace.currentSeq}
         onChange={(e) => jumpTo(traceId, Number(e.target.value))}
+        aria-label="Playback position"
+        // The raw value is a seq index counting from -1, which is meaningless
+        // read aloud; this is the same "n of m" the readout beside it shows.
+        aria-valuetext={`event ${trace.currentSeq + 1} of ${trace.entries.length}`}
       />
       <span className="playback-position">
         {trace.currentSeq + 1} / {trace.entries.length}
@@ -36,7 +42,7 @@ export function PlaybackBar({ traceId }: { traceId: string }) {
           animation. The option list also includes any speed an agent set via
           playback_play that isn't one of the presets (the engine accepts
           0.25-8), so the control never renders blank on a value it can't show. */}
-      <select value={trace.speed} onChange={(e) => setSpeed(traceId, Number(e.target.value))}>
+      <select value={trace.speed} onChange={(e) => setSpeed(traceId, Number(e.target.value))} aria-label="Playback speed">
         {(SPEEDS.includes(trace.speed) ? SPEEDS : [...SPEEDS, trace.speed].sort((a, b) => a - b)).map((s) => (
           <option key={s} value={s}>{s}x</option>
         ))}
