@@ -5,47 +5,18 @@ import type {
   GoalZeroCounterexample,
 } from './verifyHeuristic';
 import { summarizeVerdict } from './verifyHeuristic';
+import { PropertyRow, fmtValue as fmtState, round } from '../shared/VerificationRow';
 
 // Renders a verification verdict for a human. Deliberately leads with the
 // VERDICT rather than three green ticks: "proven" and "unrefuted" both have
 // every property "holding", and collapsing them into the same visual would
 // teach precisely the wrong lesson -- that failing to find a counterexample is
 // the same as there not being one.
-function fmtState(state: unknown): string {
-  if (Array.isArray(state)) return `(${state.join(', ')})`;
-  if (state === null || state === undefined) return '—';
-  if (typeof state === 'object') return JSON.stringify(state);
-  return String(state);
-}
-
-function round(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(3);
-}
-
-function PropertyRow({
-  label,
-  holds,
-  checked,
-  detail,
-  vacuous,
-}: {
-  label: string;
-  holds: boolean;
-  checked: number;
-  detail?: string;
-  vacuous?: boolean;
-}) {
-  const status = vacuous ? 'not checked' : holds ? 'holds' : 'violated';
-  const cls = vacuous ? 'verify-row-skip' : holds ? 'verify-row-ok' : 'verify-row-bad';
-  return (
-    <div className={`verify-row ${cls}`}>
-      <span className="verify-row-label">{label}</span>
-      <span className="verify-row-status">{status}</span>
-      <span className="verify-row-checked">{vacuous ? '0 checked' : `${checked.toLocaleString()} checked`}</span>
-      {detail && <div className="verify-row-detail">{detail}</div>}
-    </div>
-  );
-}
+//
+// The row itself and the value formatters are shared with the sort family's
+// ComparatorVerificationCard (see shared/VerificationRow.tsx); what stays here
+// is the part that is genuinely about heuristics -- which three properties,
+// and how to explain each violation in terms of what A* will do wrong.
 
 export function VerificationCard({ report }: { report: VerificationReport }) {
   const admCe = report.admissible.counterexample as AdmissibilityCounterexample | null;

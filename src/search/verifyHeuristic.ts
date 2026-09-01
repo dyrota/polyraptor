@@ -193,7 +193,12 @@ if not callable(_HeuristicFn):
     raise TypeError('\`heuristic\` must be a function.')
 `;
 
-export type VerificationVerdict = 'refuted' | 'proven' | 'unrefuted';
+// The verdict vocabulary and the counterexample-carrying property shape are
+// shared with the sort family's comparator verification -- see
+// shared/verification.ts for why they live in one place. Re-exported so this
+// module stays the single import for everything about a heuristic verdict.
+export type { VerificationVerdict, PropertyResult } from '../shared/verification';
+import type { VerificationVerdict, PropertyResult } from '../shared/verification';
 
 export interface AdmissibilityCounterexample {
   state: unknown;
@@ -214,12 +219,6 @@ export interface ConsistencyCounterexample {
 export interface GoalZeroCounterexample {
   state: unknown;
   h_value: number;
-}
-
-export interface PropertyResult<TCounterexample> {
-  holds: boolean;
-  checked: number;
-  counterexample: TCounterexample | null;
 }
 
 export interface VerificationReport {
