@@ -249,7 +249,8 @@ export const sortPythonTools: ToolDefinition<never>[] = [
         value_budget: {
           type: 'integer',
           description:
-            'Maximum distinct values to check (default 60, max 200). The triple sweep is cubic in this, so ' +
+            'Maximum distinct values to check (default 60, max 300 -- the same ceiling as sort_author_dataset\'s ' +
+            'size, so any dataset this app can create can be checked in full). The triple sweep is cubic in this, so ' +
             'raising it can turn an "unrefuted" verdict into "proven" at the cost of a much longer run.',
         },
       },

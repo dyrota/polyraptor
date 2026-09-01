@@ -151,6 +151,20 @@ check('budget-limited run reports "unrefuted", not "proven"', truncated.verdict 
 check('  -> and says so explicitly', truncated.budget_exceeded === true);
 check('  -> summary refuses to claim validity', /not|does NOT|unchecked/i.test(truncated.summary ?? ''), truncated.summary);
 
+console.log('\n=== the budget ceiling reaches the largest dataset this app can make ===');
+// sort_author_dataset allows size 300. If value_budget capped below that, the
+// biggest dataset the app can create could never be 'proven' -- a limit of the
+// checker reported as a fact about the comparator.
+const biggest = await call('sort_author_dataset', { dataset_type: 'random_integers', size: 300, seed: 5 });
+const startedAt = Date.now();
+const fullSweep = await call('sort_verify_comparator', { problem_id: biggest.problem_id, value_budget: 300 });
+const elapsed = Date.now() - startedAt;
+check('a 300-value dataset can be checked in full', fullSweep.budget_exceeded === false, JSON.stringify(fullSweep).slice(0, 200));
+check('  -> and reaches "proven", not "unrefuted"', fullSweep.verdict === 'proven', String(fullSweep.verdict));
+check('  -> every distinct value was covered', fullSweep.values_checked === fullSweep.distinct_values_in_dataset, `${fullSweep.values_checked} of ${fullSweep.distinct_values_in_dataset}`);
+check('  -> well inside the 20s verification timeout', elapsed < 15000, `${elapsed}ms`);
+console.log(`      (full sweep of ${fullSweep.transitive?.checked?.toLocaleString()} triples took ${elapsed}ms)`);
+
 console.log('\n=== soundness: refutation still works under a tiny budget ===');
 const truncRefuted = await authorAndVerify(VALUES, 'def comparator(a, b):\n    return 1\n', { value_budget: 3 });
 check('refutation survives truncation', truncRefuted.verdict === 'refuted', JSON.stringify(truncRefuted).slice(0, 200));

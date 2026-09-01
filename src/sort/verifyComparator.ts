@@ -66,6 +66,11 @@ import type { VerificationVerdict, PropertyResult } from '../shared/verification
 // 'unrefuted'.
 export const DEFAULT_VALUE_BUDGET = 60;
 
+// Matches sort_author_dataset's maximum size, so every dataset this app can
+// produce is verifiable end to end rather than capped at 'unrefuted' by the
+// checker's own limit.
+export const MAX_VALUE_BUDGET = 300;
+
 // Same reasoning as search's VERIFY_TIMEOUT_MS: verification is a deliberate,
 // user-initiated action rather than something on the animation path, so it
 // gets a longer leash than the 8s default -- but still a bounded one.
@@ -325,9 +330,13 @@ export async function verifyComparator(
 
   // Clamped rather than trusted: the triple sweep is cubic, so an agent
   // passing 100000 here would hang the worker until the timeout instead of
-  // answering. 200 values is ~8M triples -- slow but survivable, and a
-  // deliberate ceiling beats an opaque timeout.
-  const safeBudget = pyInt(budget, 2, 200);
+  // answering. The ceiling is 300 to match sort_author_dataset's own maximum
+  // size -- a lower cap would mean the largest dataset this app can create
+  // could never reach 'proven', which is a limit of the checker masquerading
+  // as a fact about the comparator. Measured rather than guessed: 200 distinct
+  // values is ~3.9M triples in ~0.4s, so 300 sits comfortably inside the 20s
+  // timeout.
+  const safeBudget = pyInt(budget, 2, MAX_VALUE_BUDGET);
 
   const python = `
 import json
