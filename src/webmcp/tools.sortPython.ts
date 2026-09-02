@@ -6,20 +6,8 @@ import { authorPythonSortComparator } from '../sort/runPythonComparator';
 import { verifyComparator, summarizeComparatorVerdict } from '../sort/verifyComparator';
 import { setVerification } from '../sort/state';
 import { putProblem, putTrace, getProblem, newProblemId, putAlgorithm, getAlgorithm, newAlgorithmId } from '../sort/state';
+import { SORT_ALGORITHMS } from '../sort/types';
 import type { SortAlgorithm } from '../sort/types';
-
-const SORT_ALGORITHMS = [
-  'bubble_sort',
-  'selection_sort',
-  'insertion_sort',
-  'merge_sort',
-  'quick_sort',
-  'heap_sort',
-  'counting_sort',
-  'radix_sort',
-  'shell_sort',
-  'tim_sort',
-] as const;
 
 // `_python_` infix everywhere -- sort_author_custom already exists and means
 // "a literal number list," not code. Every tool here makes "this runs real

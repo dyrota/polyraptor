@@ -100,13 +100,30 @@ export function logged<Args>(
 // the log would cheerfully record a failed authoring attempt as 'ok' -- the
 // one kind of dishonesty this log cannot afford, since a human debugging
 // their own Python is exactly who it is for.
-function failureMessage(value: unknown): string | null {
+//
+// Exported because the panels need the identical test to decide whether to
+// SHOW the error, and having the two conventions written down twice is how
+// they drift: a third convention added later would be caught by the log and
+// missed by the UI, or the reverse.
+export interface FailureDetail {
+  friendly_error: string;
+  raw_traceback?: string;
+}
+
+export function asFailure(value: unknown): FailureDetail | null {
   if (!value || typeof value !== 'object') return null;
   const o = value as Record<string, unknown>;
   if (o.ok === false || o.valid === false) {
-    return typeof o.friendly_error === 'string' ? o.friendly_error : 'failed';
+    return {
+      friendly_error: typeof o.friendly_error === 'string' ? o.friendly_error : 'failed',
+      raw_traceback: typeof o.raw_traceback === 'string' ? o.raw_traceback : undefined,
+    };
   }
   return null;
+}
+
+function failureMessage(value: unknown): string | null {
+  return asFailure(value)?.friendly_error ?? null;
 }
 
 // Records a human's click with the same lifecycle an agent's tool call gets --

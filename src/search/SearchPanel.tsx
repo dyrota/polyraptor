@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { problemsStore, activeProblemIdStore, activeTraceIdStore, putProblem, putTrace, newProblemId, verificationStore, setVerification } from './state';
 import { tracesStore } from '../shared/traceStore';
 import { generateMaze } from './mazeGenerator';
@@ -9,7 +9,6 @@ import { authorPythonSearchHeuristic, runPythonHeuristicOnProblem } from './runP
 import { verifyHeuristic, verifyBuiltinHeuristic } from './verifyHeuristic';
 import { VerificationCard } from './VerificationCard';
 import { ActiveProblemBar } from '../shared/ActiveProblemBar';
-import { forceStop } from '../pyodide/workerBridge';
 import { MazeCanvas } from './MazeCanvas';
 import { NQueensBoard } from './NQueensBoard';
 import { MissionariesView } from './MissionariesView';
@@ -20,24 +19,12 @@ import { ErrorBoundary } from '../shared/ErrorBoundary';
 import { CopyShareLinkButton } from '../shared/CopyShareLinkButton';
 import { usePersistedSource } from '../shared/persistentState';
 import { humanAction, noteHumanAction } from '../shared/activityLog';
+import { usePythonRun } from '../shared/usePythonRun';
+import { PythonErrorBlock } from '../shared/PythonErrorBlock';
 import type { SharedPayload } from '../shared/shareLink';
 import { SEARCH_PROBLEM_TEMPLATE, SEARCH_ALGORITHM_TEMPLATE, SEARCH_HEURISTIC_TEMPLATE } from './pythonTemplates';
-import type { AuthoredProblem, SearchAlgorithm, SearchTrace } from './types';
-
-const ALGORITHMS: SearchAlgorithm[] = [
-  'a_star',
-  'best_first',
-  'branch_and_bound',
-  'breadth_first',
-  'depth_first',
-  'hill_climbing',
-  'iterative_deepening',
-  'uniform_cost',
-];
-
-// Only these three built-in algorithms accept a heuristic at all -- a custom
-// heuristic is meaningless against breadth_first/depth_first/etc.
-const HEURISTIC_ALGORITHMS: Array<'a_star' | 'best_first' | 'hill_climbing'> = ['a_star', 'best_first', 'hill_climbing'];
+import { SEARCH_ALGORITHMS, HEURISTIC_ALGORITHMS } from './types';
+import type { AuthoredProblem, HeuristicAlgorithm, SearchAlgorithm, SearchTrace } from './types';
 
 // What the ActiveProblemBar says about a search problem. Kept beside the panel
 // that renders it rather than on the type, because it is presentation: the
@@ -117,21 +104,10 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
     shared?.kind === 'search-heuristic' ? shared.source : undefined,
     SEARCH_HEURISTIC_TEMPLATE
   );
-  const [pythonHeuristicAlgorithm, setPythonHeuristicAlgorithm] = useState<'a_star' | 'best_first' | 'hill_climbing'>('a_star');
-  const [pythonError, setPythonError] = useState<{ friendly_error: string; raw_traceback?: string } | null>(null);
-  const [showRawTraceback, setShowRawTraceback] = useState(false);
-  const [pythonRunning, setPythonRunning] = useState(false);
-  const [elapsedMs, setElapsedMs] = useState(0);
-  const runStartRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (!pythonRunning) return;
-    runStartRef.current = performance.now();
-    const interval = setInterval(() => {
-      if (runStartRef.current !== null) setElapsedMs(performance.now() - runStartRef.current);
-    }, 100);
-    return () => clearInterval(interval);
-  }, [pythonRunning]);
+  const [pythonHeuristicAlgorithm, setPythonHeuristicAlgorithm] = useState<HeuristicAlgorithm>('a_star');
+  // Owns the in-flight flag, the elapsed readout, and the error to show --
+  // see shared/usePythonRun.ts.
+  const py = usePythonRun();
 
   // Cast at the boundary: the shared trace store is family-agnostic (generic
   // `algorithm: string`/`summary: unknown`), search code needs its own
@@ -170,9 +146,13 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
     return undefined;
   }
 
+  // Deliberately NOT on usePythonRun's flag: a built-in run goes through
+  // bridge.ts's main-thread Pyodide while authored code goes through the
+  // worker's own separate instance, so the two genuinely can be in flight at
+  // once and must gate different buttons.
   async function handleRun() {
     if (!activeProblem) return;
-    setPythonError(null);
+    py.clear();
     setRunning(true);
     try {
       // A python_problem cannot go through runSearchAlgorithm at all -- it
@@ -195,7 +175,7 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
         putTrace(trace);
       });
     } catch (err) {
-      setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
+      py.fail(err instanceof Error ? err.message : String(err));
     } finally {
       setRunning(false);
     }
@@ -205,50 +185,30 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
   // calls the separate WebMCP tools perform, just sequenced smoother for a
   // person than making them click twice.
   async function handlePythonRun() {
-    setPythonError(null);
-    setPythonRunning(true);
-    setElapsedMs(0);
-    try {
-      // Returning the failed result rather than bare `return` is what lets
-      // humanAction log it as an error: these paths fail by returning
-      // {valid:false}/{ok:false}, not by throwing, and a silent `return` would
-      // be recorded as a success.
-      await humanAction('search', 'Validate & Run (Problem)', { algorithm: pythonAlgorithm }, async () => {
-        const authored = await authorPythonSearchProblem(pythonSource);
-        if (!authored.valid) {
-          setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
-          return authored;
-        }
-        const problemId = newProblemId('search-py');
-        const problem = {
-          problem_id: problemId,
-          type: 'python_problem' as const,
-          origin: 'human' as const,
-          source_code: pythonSource,
-          preview: {
-            initial_state: authored.initial_state,
-            operator_count: authored.operator_count,
-            goal_check_on_initial: authored.goal_check_on_initial,
-          },
-        };
-        putProblem(problem);
-        const result = await runAlgorithmOnPythonSearchProblem(problem, pythonAlgorithm);
-        if (!result.ok) {
-          setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
-          return result;
-        }
-        putTrace(result.trace!);
-        return result;
-      });
-    } catch (err) {
-      // Not every failure arrives as a validated {ok:false} result -- a bad
-      // values list, a Pyodide load failure, or a JSON parse error on the way
-      // back all throw. Without this these handlers had try/finally and no
-      // catch, so the button just stopped spinning and said nothing.
-      setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setPythonRunning(false);
-    }
+    // Returning the failed result rather than a bare `return` is what surfaces
+    // it: these paths fail by returning {valid:false}/{ok:false} rather than
+    // throwing, and py.run reads that convention to both log and display the
+    // error. A silent `return` would be recorded as a success.
+    await py.run('search', 'Validate & Run (Problem)', { algorithm: pythonAlgorithm }, async () => {
+      const authored = await authorPythonSearchProblem(pythonSource);
+      if (!authored.valid) return authored;
+      const problem = {
+        problem_id: newProblemId('search-py'),
+        type: 'python_problem' as const,
+        origin: 'human' as const,
+        source_code: pythonSource,
+        preview: {
+          initial_state: authored.initial_state,
+          operator_count: authored.operator_count,
+          goal_check_on_initial: authored.goal_check_on_initial,
+        },
+      };
+      putProblem(problem);
+      const result = await runAlgorithmOnPythonSearchProblem(problem, pythonAlgorithm);
+      if (!result.ok) return result;
+      putTrace(result.trace!);
+      return result;
+    });
   }
 
   // Runs a custom algorithm against whatever problem is currently active
@@ -256,34 +216,14 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
   // one-click pattern as handlePythonRun.
   async function handlePythonAlgorithmRun() {
     if (!activeProblem) return;
-    setPythonError(null);
-    setPythonRunning(true);
-    setElapsedMs(0);
-    try {
-      await humanAction('search', 'Validate & Run (Algorithm)', { problem_id: activeProblem.problem_id }, async () => {
-        const authored = await authorPythonSearchAlgorithm(pythonAlgorithmSource);
-        if (!authored.valid) {
-          setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
-          return authored;
-        }
-        const result = await runPythonAlgorithmOnProblem(activeProblem, pythonAlgorithmSource);
-        if (!result.ok) {
-          setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
-          if (result.trace) putTrace(result.trace);
-          return result;
-        }
-        putTrace(result.trace!);
-        return result;
-      });
-    } catch (err) {
-      // Not every failure arrives as a validated {ok:false} result -- a bad
-      // values list, a Pyodide load failure, or a JSON parse error on the way
-      // back all throw. Without this these handlers had try/finally and no
-      // catch, so the button just stopped spinning and said nothing.
-      setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setPythonRunning(false);
-    }
+    await py.run('search', 'Validate & Run (Algorithm)', { problem_id: activeProblem.problem_id }, async () => {
+      const authored = await authorPythonSearchAlgorithm(pythonAlgorithmSource);
+      if (!authored.valid) return authored;
+      const result = await runPythonAlgorithmOnProblem(activeProblem, pythonAlgorithmSource);
+      // A run that crashed partway still has a partial trace worth showing.
+      if (result.trace) putTrace(result.trace);
+      return result;
+    });
   }
 
   // Narrowest-risk slot: only the heuristic is untrusted, called from inside
@@ -292,38 +232,15 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
   // "reuse activeProblem, no separate picker" pattern as handlePythonAlgorithmRun.
   async function handlePythonHeuristicRun() {
     if (!activeProblem) return;
-    setPythonError(null);
-    setPythonRunning(true);
-    setElapsedMs(0);
-    try {
-      await humanAction(
-        'search',
-        'Validate & Run (Heuristic)',
-        { algorithm: pythonHeuristicAlgorithm, problem_id: activeProblem.problem_id },
-        async () => {
-          const authored = await authorPythonSearchHeuristic(pythonHeuristicSource, activeProblem);
-          if (!authored.valid) {
-            setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
-            return authored;
-          }
-          const result = await runPythonHeuristicOnProblem(activeProblem, pythonHeuristicSource, pythonHeuristicAlgorithm);
-          if (!result.ok) {
-            setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
-            return result;
-          }
-          putTrace(result.trace!);
-          return result;
-        }
-      );
-    } catch (err) {
-      // Not every failure arrives as a validated {ok:false} result -- a bad
-      // values list, a Pyodide load failure, or a JSON parse error on the way
-      // back all throw. Without this these handlers had try/finally and no
-      // catch, so the button just stopped spinning and said nothing.
-      setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setPythonRunning(false);
-    }
+    const detail = { algorithm: pythonHeuristicAlgorithm, problem_id: activeProblem.problem_id };
+    await py.run('search', 'Validate & Run (Heuristic)', detail, async () => {
+      const authored = await authorPythonSearchHeuristic(pythonHeuristicSource, activeProblem);
+      if (!authored.valid) return authored;
+      const result = await runPythonHeuristicOnProblem(activeProblem, pythonHeuristicSource, pythonHeuristicAlgorithm);
+      if (!result.ok) return result;
+      putTrace(result.trace!);
+      return result;
+    });
   }
 
   // Verification is a separate action from running: running shows you WHAT the
@@ -332,35 +249,20 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
   // still be silently inadmissible, which is the entire point of the feature.
   async function handleVerifyHeuristic() {
     if (!activeProblem) return;
-    setPythonError(null);
-    setPythonRunning(true);
-    setElapsedMs(0);
-    try {
-      await humanAction('search', 'Verify heuristic', { problem_id: activeProblem.problem_id }, async () => {
-        const authored = await authorPythonSearchHeuristic(pythonHeuristicSource, activeProblem);
-        if (!authored.valid) {
-          setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
-          return authored;
-        }
-        const result = await verifyHeuristic(activeProblem, pythonHeuristicSource);
-        if (!result.ok) {
-          setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
-          return result;
-        }
-        setVerification({
-          problem_id: activeProblem.problem_id,
-          heuristic_id: null,
-          source_code: pythonHeuristicSource,
-          report: result.report!,
-          at: Date.now(),
-        });
-        return result;
+    await py.run('search', 'Verify heuristic', { problem_id: activeProblem.problem_id }, async () => {
+      const authored = await authorPythonSearchHeuristic(pythonHeuristicSource, activeProblem);
+      if (!authored.valid) return authored;
+      const result = await verifyHeuristic(activeProblem, pythonHeuristicSource);
+      if (!result.ok) return result;
+      setVerification({
+        problem_id: activeProblem.problem_id,
+        heuristic_id: null,
+        source_code: pythonHeuristicSource,
+        report: result.report!,
+        at: Date.now(),
       });
-    } catch (err) {
-      setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setPythonRunning(false);
-    }
+      return result;
+    });
   }
 
   // The built-in counterpart to handleVerifyHeuristic, and the reason
@@ -373,35 +275,19 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
     if (!activeProblem) return;
     const builtin = builtinHeuristicFor(activeProblem.type);
     if (!builtin) return;
-    setPythonError(null);
-    setPythonRunning(true);
-    setElapsedMs(0);
-    try {
-      await humanAction('search', 'Verify heuristic', { heuristic: builtin, problem_id: activeProblem.problem_id }, async () => {
-        const result = await verifyBuiltinHeuristic(activeProblem, builtin);
-        if (!result.ok) {
-          setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
-          return result;
-        }
-        setVerification({
-          problem_id: activeProblem.problem_id,
-          heuristic_id: null,
-          source_code: `# built-in: ${builtin}`,
-          report: result.report!,
-          at: Date.now(),
-        });
-        return result;
+    const detail = { heuristic: builtin, problem_id: activeProblem.problem_id };
+    await py.run('search', 'Verify heuristic', detail, async () => {
+      const result = await verifyBuiltinHeuristic(activeProblem, builtin);
+      if (!result.ok) return result;
+      setVerification({
+        problem_id: activeProblem.problem_id,
+        heuristic_id: null,
+        source_code: `# built-in: ${builtin}`,
+        report: result.report!,
+        at: Date.now(),
       });
-    } catch (err) {
-      setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setPythonRunning(false);
-    }
-  }
-
-  function handleStop() {
-    forceStop();
-    setPythonRunning(false);
+      return result;
+    });
   }
 
   const builtinHeuristic = activeProblem ? builtinHeuristicFor(activeProblem.type) : undefined;
@@ -422,7 +308,7 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
           <label className="control-label">
             Algorithm
             <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value as SearchAlgorithm)}>
-              {ALGORITHMS.map((a) => (
+              {SEARCH_ALGORITHMS.map((a) => (
                 <option key={a} value={a}>{a}</option>
               ))}
             </select>
@@ -442,14 +328,14 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
           </button>
           <button
             onClick={handleVerifyBuiltinHeuristic}
-            disabled={!activeProblem || !builtinHeuristic || running || pythonRunning}
+            disabled={!activeProblem || !builtinHeuristic || running || py.running}
             title={
               builtinHeuristic
                 ? `Check whether ${builtinHeuristic} is admissible and consistent on this problem, against exhaustively computed ground truth`
                 : 'Pick a heuristic first — there is nothing to verify without one'
             }
           >
-            {pythonRunning ? `Verifying... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Verify heuristic'}
+            {py.running ? `Verifying... (${(py.elapsedMs / 1000).toFixed(1)}s)` : 'Verify heuristic'}
           </button>
         </div>
       )}
@@ -464,36 +350,36 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
 
           {pythonSubMode === 'problem' && (
             <>
-              <PythonEditor value={pythonSource} onChange={setPythonSource} readOnly={pythonRunning} />
+              <PythonEditor value={pythonSource} onChange={setPythonSource} readOnly={py.running} />
               <div className="search-controls">
                 <label className="control-label">
                   Algorithm
                   <select value={pythonAlgorithm} onChange={(e) => setPythonAlgorithm(e.target.value as SearchAlgorithm)}>
-                    {ALGORITHMS.map((a) => (
+                    {SEARCH_ALGORITHMS.map((a) => (
                       <option key={a} value={a}>{a}</option>
                     ))}
                   </select>
                 </label>
-                <button onClick={handlePythonRun} disabled={pythonRunning}>
-                  {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run'}
+                <button onClick={handlePythonRun} disabled={py.running}>
+                  {py.running ? `Running... (${(py.elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run'}
                 </button>
-                {pythonRunning && <button onClick={handleStop}>Stop</button>}
+                {py.running && <button onClick={py.stop}>Stop</button>}
                 <CopyShareLinkButton payload={{ kind: 'search-problem', source: pythonSource }} />
-                <button className="link-button" onClick={resetPythonSource} disabled={pythonRunning}>Reset to template</button>
+                <button className="link-button" onClick={resetPythonSource} disabled={py.running}>Reset to template</button>
               </div>
             </>
           )}
 
           {pythonSubMode === 'algorithm' && (
             <>
-              <PythonEditor value={pythonAlgorithmSource} onChange={setPythonAlgorithmSource} readOnly={pythonRunning} />
+              <PythonEditor value={pythonAlgorithmSource} onChange={setPythonAlgorithmSource} readOnly={py.running} />
               <div className="search-controls">
-                <button onClick={handlePythonAlgorithmRun} disabled={pythonRunning || !activeProblem}>
-                  {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run against active problem'}
+                <button onClick={handlePythonAlgorithmRun} disabled={py.running || !activeProblem}>
+                  {py.running ? `Running... (${(py.elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run against active problem'}
                 </button>
-                {pythonRunning && <button onClick={handleStop}>Stop</button>}
+                {py.running && <button onClick={py.stop}>Stop</button>}
                 <CopyShareLinkButton payload={{ kind: 'search-algorithm', source: pythonAlgorithmSource }} />
-                <button className="link-button" onClick={resetPythonAlgorithmSource} disabled={pythonRunning}>Reset to template</button>
+                <button className="link-button" onClick={resetPythonAlgorithmSource} disabled={py.running}>Reset to template</button>
                 {!activeProblem && <span className="search-empty">Author or select a problem first (Built-in or Problem sub-tab).</span>}
               </div>
             </>
@@ -501,28 +387,28 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
 
           {pythonSubMode === 'heuristic' && (
             <>
-              <PythonEditor value={pythonHeuristicSource} onChange={setPythonHeuristicSource} readOnly={pythonRunning} />
+              <PythonEditor value={pythonHeuristicSource} onChange={setPythonHeuristicSource} readOnly={py.running} />
               <div className="search-controls">
                 <label className="control-label">
                   Algorithm
                   <select
                     value={pythonHeuristicAlgorithm}
-                    onChange={(e) => setPythonHeuristicAlgorithm(e.target.value as 'a_star' | 'best_first' | 'hill_climbing')}
+                    onChange={(e) => setPythonHeuristicAlgorithm(e.target.value as HeuristicAlgorithm)}
                   >
                     {HEURISTIC_ALGORITHMS.map((a) => (
                       <option key={a} value={a}>{a}</option>
                     ))}
                   </select>
                 </label>
-                <button onClick={handlePythonHeuristicRun} disabled={pythonRunning || !activeProblem}>
-                  {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run against active problem'}
+                <button onClick={handlePythonHeuristicRun} disabled={py.running || !activeProblem}>
+                  {py.running ? `Running... (${(py.elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run against active problem'}
                 </button>
-                <button onClick={handleVerifyHeuristic} disabled={pythonRunning || !activeProblem} title="Check admissibility and consistency against exhaustively computed ground truth">
+                <button onClick={handleVerifyHeuristic} disabled={py.running || !activeProblem} title="Check admissibility and consistency against exhaustively computed ground truth">
                   Verify
                 </button>
-                {pythonRunning && <button onClick={handleStop}>Stop</button>}
+                {py.running && <button onClick={py.stop}>Stop</button>}
                 <CopyShareLinkButton payload={{ kind: 'search-heuristic', source: pythonHeuristicSource }} />
-                <button className="link-button" onClick={resetPythonHeuristicSource} disabled={pythonRunning}>Reset to template</button>
+                <button className="link-button" onClick={resetPythonHeuristicSource} disabled={py.running}>Reset to template</button>
                 {!activeProblem && <span className="search-empty">Author or select a problem first (Built-in or Problem sub-tab).</span>}
               </div>
             </>
@@ -531,23 +417,7 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
         </div>
       )}
 
-      {/* Outside the mode === 'python' block on purpose: built-in Run/New
-          Dataset can fail too (a rejected custom problem, a Pyodide load
-          failure), and while this lived inside that block those errors had
-          nowhere to render at all. */}
-      {pythonError && (
-        <div className="python-error">
-          <div className="python-error-message">{pythonError.friendly_error}</div>
-          {pythonError.raw_traceback && (
-            <>
-              <button className="python-error-toggle" onClick={() => setShowRawTraceback((s) => !s)}>
-                {showRawTraceback ? 'Hide details' : 'Show details'}
-              </button>
-              {showRawTraceback && <pre className="python-error-traceback">{pythonError.raw_traceback}</pre>}
-            </>
-          )}
-        </div>
-      )}
+      <PythonErrorBlock error={py.error} />
 
       {!activeProblem && (
         <p className="search-empty">

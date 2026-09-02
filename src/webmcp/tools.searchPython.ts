@@ -6,20 +6,8 @@ import { authorPythonSearchHeuristic, runPythonHeuristicOnProblem } from '../sea
 import { verifyHeuristic, summarizeVerdict } from '../search/verifyHeuristic';
 import { setVerification } from '../search/state';
 import { putProblem, putTrace, getProblem, newProblemId, putAlgorithm, getAlgorithm, newAlgorithmId } from '../search/state';
-import type { SearchAlgorithm } from '../search/types';
-
-const HEURISTIC_ALGORITHMS = ['a_star', 'best_first', 'hill_climbing'] as const;
-
-const SEARCH_ALGORITHMS = [
-  'a_star',
-  'best_first',
-  'branch_and_bound',
-  'breadth_first',
-  'depth_first',
-  'hill_climbing',
-  'iterative_deepening',
-  'uniform_cost',
-] as const;
+import { SEARCH_ALGORITHMS, HEURISTIC_ALGORITHMS } from '../search/types';
+import type { HeuristicAlgorithm, SearchAlgorithm } from '../search/types';
 
 // `_python_` infix everywhere, mirroring sortPythonTools -- every new tool
 // makes "this runs real code" unmistakable in its own name.
@@ -307,7 +295,7 @@ export const searchPythonTools: ToolDefinition<never>[] = [
     },
     execute: logged(
       'search_run_python_heuristic',
-      async (args: { problem_id: string; heuristic_id: string; algorithm?: 'a_star' | 'best_first' | 'hill_climbing' }) => {
+      async (args: { problem_id: string; heuristic_id: string; algorithm?: HeuristicAlgorithm }) => {
         const problem = getProblem(args.problem_id);
         const heuristic = getAlgorithm(args.heuristic_id);
         const result = await runPythonHeuristicOnProblem(problem, heuristic.source_code, args.algorithm ?? 'a_star');

@@ -3,18 +3,8 @@ import { logged } from '../shared/activityLog';
 import { generateMaze } from '../search/mazeGenerator';
 import { putProblem, putTrace, getProblem, newProblemId } from '../search/state';
 import { runSearchAlgorithm, benchmarkCompareSearch, proposeHeuristic } from '../search/runAlgorithm';
+import { SEARCH_ALGORITHMS } from '../search/types';
 import type { AuthoredProblem, SearchAlgorithm } from '../search/types';
-
-const SEARCH_ALGORITHMS = [
-  'a_star',
-  'best_first',
-  'branch_and_bound',
-  'breadth_first',
-  'depth_first',
-  'hill_climbing',
-  'iterative_deepening',
-  'uniform_cost',
-] as const;
 
 export const searchTools: ToolDefinition<never>[] = [
   {

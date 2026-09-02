@@ -71,15 +71,34 @@ export interface SearchTraceEntry {
 
 export type MazeState = [number, number];
 
-export type SearchAlgorithm =
-  | 'a_star'
-  | 'best_first'
-  | 'branch_and_bound'
-  | 'breadth_first'
-  | 'depth_first'
-  | 'hill_climbing'
-  | 'iterative_deepening'
-  | 'uniform_cost';
+// The array is the source of truth and the union is derived from it, rather
+// than the other way round. This list was written out three separate times --
+// the panel's dropdown, search_run_algorithm's enum, and
+// search_run_algorithm_on_python_problem's enum -- so adding a ninth algorithm
+// meant finding all three, and a union type could not catch the one you missed
+// because each copy independently satisfied it.
+export const SEARCH_ALGORITHMS = [
+  'a_star',
+  'best_first',
+  'branch_and_bound',
+  'breadth_first',
+  'depth_first',
+  'hill_climbing',
+  'iterative_deepening',
+  'uniform_cost',
+] as const;
+
+export type SearchAlgorithm = (typeof SEARCH_ALGORITHMS)[number];
+
+// The three that accept a heuristic= kwarg (verified against the wheel; the
+// other five do not). Also previously written out three times, and this one is
+// load-bearing rather than cosmetic: runAlgorithm.ts decides whether to pass
+// the kwarg at all from its copy, while the panel and the tool schema decide
+// what to OFFER from theirs -- so a drift between them would silently mean
+// "you picked a heuristic and it was ignored".
+export const HEURISTIC_ALGORITHMS = ['a_star', 'best_first', 'hill_climbing'] as const;
+
+export type HeuristicAlgorithm = (typeof HEURISTIC_ALGORITHMS)[number];
 
 export type SearchProblemType = 'maze' | 'n_queens' | 'missionaries_and_cannibals' | 'python_problem';
 

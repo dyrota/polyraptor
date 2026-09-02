@@ -13,6 +13,7 @@
 // wrap-already-known-values approach covers all of them uniformly -- no need
 // to re-run a dataset generator here at all.
 import { runUntrusted } from '../pyodide/workerBridge';
+import { EXEC_STUDENT_ALGORITHM } from '../shared/authorPythonAlgorithm';
 import { makeCollector, newTraceId } from '../pyodide/traceCollector';
 import { pyIntListLiteral, CUSTOM_PROBLEM_CLASS } from './runAlgorithm';
 import { PY_SAFE_JSON_HELPER } from '../pyodide/pySafeJson';
@@ -20,42 +21,11 @@ import { EXEC_STUDENT_SOURCE as EXEC_STUDENT_PROBLEM_SOURCE, CHECK_SORTPROBLEM_S
 import type { AuthoredSortProblem, SortTrace } from './types';
 import type { FriendlyError } from '../pyodide/friendlyErrors';
 
-const EXEC_STUDENT_ALGORITHM = `
-_student_algo_globals = {}
-exec(compile(_student_algorithm_source, '<your code>', 'exec'), _student_algo_globals)
-if 'algorithm' not in _student_algo_globals:
-    raise NameError("name 'algorithm' is not defined")
-_AlgorithmFn = _student_algo_globals['algorithm']
-if not callable(_AlgorithmFn):
-    raise TypeError('\`algorithm\` must be a function.')
-`;
-
-export interface AuthorPythonAlgorithmResult {
-  valid: boolean;
-  accepts_on_step?: boolean;
-  kind?: string;
-  friendly_error?: string;
-  raw_traceback?: string;
-}
-
-export async function authorPythonSortAlgorithm(sourceCode: string): Promise<AuthorPythonAlgorithmResult> {
-  const python = `
-${EXEC_STUDENT_ALGORITHM}
-import inspect
-_sig = inspect.signature(_AlgorithmFn)
-if len(_sig.parameters) < 1:
-    raise TypeError('\`algorithm\` must accept at least one parameter (the problem).')
-import json
-json.dumps({'accepts_on_step': 'on_step' in _sig.parameters})
-`;
-  const result = await runUntrusted(python, { _student_algorithm_source: sourceCode });
-  if (!result.ok) {
-    const err = result.error as FriendlyError;
-    return { valid: false, kind: err.kind, friendly_error: err.friendly_message, raw_traceback: err.raw_traceback };
-  }
-  const { accepts_on_step } = JSON.parse(result.result ?? '{}') as { accepts_on_step: boolean };
-  return { valid: true, accepts_on_step };
-}
+// Author-time validation is entirely family-agnostic, so it lives in
+// shared/ and is re-exported here under the name the panel and the tools
+// already call it by. Only the RUN half below is family-specific.
+export { authorPythonAlgorithm as authorPythonSortAlgorithm } from '../shared/authorPythonAlgorithm';
+export type { AuthorPythonAlgorithmResult } from '../shared/authorPythonAlgorithm';
 
 export interface RunPythonAlgorithmResult {
   trace?: SortTrace;

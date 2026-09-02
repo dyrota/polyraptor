@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { problemsStore, activeProblemIdStore, activeTraceIdStore, putProblem, putTrace, newProblemId, verificationStore, setVerification } from './state';
 import { tracesStore } from '../shared/traceStore';
 import { authorSortDataset, runSortAlgorithm } from './runAlgorithm';
@@ -7,7 +7,6 @@ import { authorPythonSortAlgorithm, runPythonAlgorithmOnProblem } from './runPyt
 import { authorPythonSortComparator } from './runPythonComparator';
 import { verifyComparator, counterexampleMarks } from './verifyComparator';
 import { ComparatorVerificationCard } from './ComparatorVerificationCard';
-import { forceStop } from '../pyodide/workerBridge';
 import { BarArrayCanvas } from './BarArrayCanvas';
 import { ErrorBoundary } from '../shared/ErrorBoundary';
 import { PlaybackBar } from '../playback/PlaybackBar';
@@ -16,22 +15,12 @@ import { CopyShareLinkButton } from '../shared/CopyShareLinkButton';
 import { ActiveProblemBar } from '../shared/ActiveProblemBar';
 import { usePersistedSource } from '../shared/persistentState';
 import { humanAction } from '../shared/activityLog';
+import { usePythonRun } from '../shared/usePythonRun';
+import { PythonErrorBlock } from '../shared/PythonErrorBlock';
 import type { SharedPayload } from '../shared/shareLink';
 import { SORT_PROBLEM_TEMPLATE, SORT_ALGORITHM_TEMPLATE, SORT_COMPARATOR_TEMPLATE } from './pythonTemplates';
+import { SORT_ALGORITHMS } from './types';
 import type { AuthoredSortProblem, SortAlgorithm, SortDatasetType, SortTrace } from './types';
-
-const ALGORITHMS: SortAlgorithm[] = [
-  'bubble_sort',
-  'selection_sort',
-  'insertion_sort',
-  'merge_sort',
-  'quick_sort',
-  'heap_sort',
-  'counting_sort',
-  'radix_sort',
-  'shell_sort',
-  'tim_sort',
-];
 
 const DATASETS: SortDatasetType[] = ['random_integers', 'nearly_sorted', 'reverse_sorted', 'many_duplicates'];
 
@@ -51,6 +40,8 @@ function describeProblem(problem: AuthoredSortProblem): { kind: string; detail?:
   if (problem.dataset_type === 'custom') return { kind: 'Custom values', detail: size };
   return { kind: problem.dataset_type, detail: size };
 }
+
+const EMPTY_VALUES_MESSAGE = 'Enter at least one number to sort, separated by commas.';
 
 function parseComparatorValues(text: string): number[] {
   return text
@@ -111,20 +102,9 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
     shared?.kind === 'sort-comparator' ? shared.source : undefined,
     SORT_COMPARATOR_TEMPLATE
   );
-  const [pythonError, setPythonError] = useState<{ friendly_error: string; raw_traceback?: string } | null>(null);
-  const [showRawTraceback, setShowRawTraceback] = useState(false);
-  const [pythonRunning, setPythonRunning] = useState(false);
-  const [elapsedMs, setElapsedMs] = useState(0);
-  const runStartRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (!pythonRunning) return;
-    runStartRef.current = performance.now();
-    const interval = setInterval(() => {
-      if (runStartRef.current !== null) setElapsedMs(performance.now() - runStartRef.current);
-    }, 100);
-    return () => clearInterval(interval);
-  }, [pythonRunning]);
+  // Owns the in-flight flag, the elapsed readout, and the error to show --
+  // see shared/usePythonRun.ts.
+  const py = usePythonRun();
 
   const activeTrace = (activeTraceId ? traces[activeTraceId] : null) as SortTrace | null;
   // Always show the problem the active trace actually ran on, not just
@@ -140,24 +120,22 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
       ? counterexampleMarks(verification.report)
       : null;
 
+  // Generating a dataset runs Python, so it fails if Pyodide never loaded --
+  // once an unhandled rejection and a button that appeared to do nothing.
   async function handleNewDataset() {
-    setPythonError(null);
-    try {
-      await humanAction('sort', 'New Dataset', { dataset_type: datasetType, size }, async () => {
-        const { values } = await authorSortDataset({ dataset_type: datasetType, size });
-        putProblem({ problem_id: newProblemId('sort'), dataset_type: datasetType, origin: 'human', size: values.length, values });
-      });
-    } catch (err) {
-      // Generating a dataset runs Python, so this fails if Pyodide never
-      // loaded -- previously an unhandled rejection and a button that
-      // appeared to do nothing.
-      setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
-    }
+    await py.run('sort', 'New Dataset', { dataset_type: datasetType, size }, async () => {
+      const { values } = await authorSortDataset({ dataset_type: datasetType, size });
+      putProblem({ problem_id: newProblemId('sort'), dataset_type: datasetType, origin: 'human', size: values.length, values });
+    });
   }
 
+  // Deliberately NOT on usePythonRun's flag: a built-in run goes through
+  // bridge.ts's main-thread Pyodide while authored code goes through the
+  // worker's own separate instance, so the two genuinely can be in flight at
+  // once and must gate different buttons.
   async function handleRun() {
     if (!activeProblem) return;
-    setPythonError(null);
+    py.clear();
     setRunning(true);
     try {
       // runSortAlgorithm rewraps the problem's `values` in the trusted
@@ -180,7 +158,7 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
         putTrace(trace);
       });
     } catch (err) {
-      setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
+      py.fail(err instanceof Error ? err.message : String(err));
     } finally {
       setRunning(false);
     }
@@ -190,79 +168,39 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
   // calls the separate WebMCP tools perform, just sequenced smoother for a
   // person than making them click twice.
   async function handlePythonRun() {
-    setPythonError(null);
-    setPythonRunning(true);
-    setElapsedMs(0);
-    try {
-      // Returning the failed result rather than bare `return` is what lets
-      // humanAction log it as an error: these paths fail by returning
-      // {valid:false}/{ok:false}, not by throwing, and a silent `return` would
-      // be recorded as a success.
-      await humanAction('sort', 'Validate & Run (Problem)', { algorithm }, async () => {
-        const authored = await authorPythonSortProblem(pythonSource);
-        if (!authored.valid) {
-          setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
-          return authored;
-        }
-        const problemId = newProblemId('sort-py');
-        const problem = {
-          problem_id: problemId,
-          dataset_type: 'python_problem' as const,
-          origin: 'human' as const,
-          size: authored.size!,
-          values: authored.values!,
-          source_code: pythonSource,
-        };
-        putProblem(problem);
-        const result = await runAlgorithmOnPythonSortProblem(problem, algorithm);
-        if (!result.ok) {
-          setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
-          return result;
-        }
-        putTrace(result.trace!);
-        return result;
-      });
-    } catch (err) {
-      // Not every failure arrives as a validated {ok:false} result -- a bad
-      // values list, a Pyodide load failure, or a JSON parse error on the way
-      // back all throw. Without this these handlers had try/finally and no
-      // catch, so the button just stopped spinning and said nothing.
-      setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setPythonRunning(false);
-    }
+    // Returning the failed result rather than a bare `return` is what surfaces
+    // it: these paths fail by returning {valid:false}/{ok:false} rather than
+    // throwing, and py.run reads that convention to both log and display the
+    // error. A silent `return` would be recorded as a success.
+    await py.run('sort', 'Validate & Run (Problem)', { algorithm }, async () => {
+      const authored = await authorPythonSortProblem(pythonSource);
+      if (!authored.valid) return authored;
+      const problem = {
+        problem_id: newProblemId('sort-py'),
+        dataset_type: 'python_problem' as const,
+        origin: 'human' as const,
+        size: authored.size!,
+        values: authored.values!,
+        source_code: pythonSource,
+      };
+      putProblem(problem);
+      const result = await runAlgorithmOnPythonSortProblem(problem, algorithm);
+      if (!result.ok) return result;
+      putTrace(result.trace!);
+      return result;
+    });
   }
 
   async function handlePythonAlgorithmRun() {
     if (!activeProblem) return;
-    setPythonError(null);
-    setPythonRunning(true);
-    setElapsedMs(0);
-    try {
-      await humanAction('sort', 'Validate & Run (Algorithm)', { problem_id: activeProblem.problem_id }, async () => {
-        const authored = await authorPythonSortAlgorithm(pythonAlgorithmSource);
-        if (!authored.valid) {
-          setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
-          return authored;
-        }
-        const result = await runPythonAlgorithmOnProblem(activeProblem, pythonAlgorithmSource);
-        if (!result.ok) {
-          setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
-          if (result.trace) putTrace(result.trace);
-          return result;
-        }
-        putTrace(result.trace!);
-        return result;
-      });
-    } catch (err) {
-      // Not every failure arrives as a validated {ok:false} result -- a bad
-      // values list, a Pyodide load failure, or a JSON parse error on the way
-      // back all throw. Without this these handlers had try/finally and no
-      // catch, so the button just stopped spinning and said nothing.
-      setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setPythonRunning(false);
-    }
+    await py.run('sort', 'Validate & Run (Algorithm)', { problem_id: activeProblem.problem_id }, async () => {
+      const authored = await authorPythonSortAlgorithm(pythonAlgorithmSource);
+      if (!authored.valid) return authored;
+      const result = await runPythonAlgorithmOnProblem(activeProblem, pythonAlgorithmSource);
+      // A run that crashed partway still has a partial trace worth showing.
+      if (result.trace) putTrace(result.trace);
+      return result;
+    });
   }
 
   // Lowest-risk on-ramp: no Problem class at all, just a trusted literal
@@ -272,50 +210,25 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
   // the result is a normal python_problem, run the same way handlePythonRun
   // runs one.
   async function handlePythonComparatorRun() {
-    setPythonError(null);
-    setPythonRunning(true);
-    setElapsedMs(0);
-    try {
-      const values = parseComparatorValues(pythonComparatorValuesText);
-      // Empty or all-garbage input reaches pyIntListLiteral and throws from
-      // inside the author call; catching it here names the actual problem.
-      if (values.length === 0) {
-        setPythonError({ friendly_error: 'Enter at least one number to sort, separated by commas.' });
-        return;
-      }
-      await humanAction('sort', 'Validate & Run (Comparator)', { algorithm, value_count: values.length }, async () => {
-        const authored = await authorPythonSortComparator(values, pythonComparatorSource);
-        if (!authored.valid) {
-          setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
-          return authored;
-        }
-        const problemId = newProblemId('sort-cmp-py');
-        const problem = {
-          problem_id: problemId,
-          dataset_type: 'python_problem' as const,
-          origin: 'human' as const,
-          size: authored.size!,
-          values: authored.values!,
-          source_code: authored.synthetic_source!,
-        };
-        putProblem(problem);
-        const result = await runAlgorithmOnPythonSortProblem(problem, algorithm);
-        if (!result.ok) {
-          setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
-          return result;
-        }
-        putTrace(result.trace!);
-        return result;
-      });
-    } catch (err) {
-      // Not every failure arrives as a validated {ok:false} result -- a bad
-      // values list, a Pyodide load failure, or a JSON parse error on the way
-      // back all throw. Without this these handlers had try/finally and no
-      // catch, so the button just stopped spinning and said nothing.
-      setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setPythonRunning(false);
-    }
+    const values = parseComparatorValues(pythonComparatorValuesText);
+    if (values.length === 0) return py.fail(EMPTY_VALUES_MESSAGE);
+    await py.run('sort', 'Validate & Run (Comparator)', { algorithm, value_count: values.length }, async () => {
+      const authored = await authorPythonSortComparator(values, pythonComparatorSource);
+      if (!authored.valid) return authored;
+      const problem = {
+        problem_id: newProblemId('sort-cmp-py'),
+        dataset_type: 'python_problem' as const,
+        origin: 'human' as const,
+        size: authored.size!,
+        values: authored.values!,
+        source_code: authored.synthetic_source!,
+      };
+      putProblem(problem);
+      const result = await runAlgorithmOnPythonSortProblem(problem, algorithm);
+      if (!result.ok) return result;
+      putTrace(result.trace!);
+      return result;
+    });
   }
 
   // Verification is a separate action from running, for a sharper reason than
@@ -331,24 +244,12 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
   // therefore sits with the run controls, not inside the comparator sub-mode.
   async function handleVerifyComparator() {
     if (!activeProblem) return;
-    setPythonError(null);
-    setPythonRunning(true);
-    setElapsedMs(0);
-    try {
-      await humanAction('sort', 'Verify comparator', { problem_id: activeProblem.problem_id }, async () => {
-        const result = await verifyComparator(activeProblem);
-        if (!result.ok) {
-          setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
-          return result;
-        }
-        setVerification({ problem_id: activeProblem.problem_id, report: result.report!, at: Date.now() });
-        return result;
-      });
-    } catch (err) {
-      setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setPythonRunning(false);
-    }
+    await py.run('sort', 'Verify comparator', { problem_id: activeProblem.problem_id }, async () => {
+      const result = await verifyComparator(activeProblem);
+      if (!result.ok) return result;
+      setVerification({ problem_id: activeProblem.problem_id, report: result.report!, at: Date.now() });
+      return result;
+    });
   }
 
   // The comparator sub-mode's own verify path: authors what is in the editor
@@ -357,48 +258,25 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
   // look fine, then find out it was never a valid ordering" is the lesson, and
   // it only lands if verifying is reachable as its own step.
   async function handleVerifyAuthoredComparator() {
-    setPythonError(null);
-    setPythonRunning(true);
-    setElapsedMs(0);
-    try {
-      const values = parseComparatorValues(pythonComparatorValuesText);
-      if (values.length === 0) {
-        setPythonError({ friendly_error: 'Enter at least one number to sort, separated by commas.' });
-        return;
-      }
-      await humanAction('sort', 'Validate & Verify', { value_count: values.length }, async () => {
-        const authored = await authorPythonSortComparator(values, pythonComparatorSource);
-        if (!authored.valid) {
-          setPythonError({ friendly_error: authored.friendly_error!, raw_traceback: authored.raw_traceback });
-          return authored;
-        }
-        const problem = {
-          problem_id: newProblemId('sort-cmp-py'),
-          dataset_type: 'python_problem' as const,
-          origin: 'human' as const,
-          size: authored.size!,
-          values: authored.values!,
-          source_code: authored.synthetic_source!,
-        };
-        putProblem(problem);
-        const result = await verifyComparator(problem);
-        if (!result.ok) {
-          setPythonError({ friendly_error: result.friendly_error!, raw_traceback: result.raw_traceback });
-          return result;
-        }
-        setVerification({ problem_id: problem.problem_id, report: result.report!, at: Date.now() });
-        return result;
-      });
-    } catch (err) {
-      setPythonError({ friendly_error: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setPythonRunning(false);
-    }
-  }
-
-  function handleStop() {
-    forceStop();
-    setPythonRunning(false);
+    const values = parseComparatorValues(pythonComparatorValuesText);
+    if (values.length === 0) return py.fail(EMPTY_VALUES_MESSAGE);
+    await py.run('sort', 'Validate & Verify', { value_count: values.length }, async () => {
+      const authored = await authorPythonSortComparator(values, pythonComparatorSource);
+      if (!authored.valid) return authored;
+      const problem = {
+        problem_id: newProblemId('sort-cmp-py'),
+        dataset_type: 'python_problem' as const,
+        origin: 'human' as const,
+        size: authored.size!,
+        values: authored.values!,
+        source_code: authored.synthetic_source!,
+      };
+      putProblem(problem);
+      const result = await verifyComparator(problem);
+      if (!result.ok) return result;
+      setVerification({ problem_id: problem.problem_id, report: result.report!, at: Date.now() });
+      return result;
+    });
   }
 
   return (
@@ -426,7 +304,7 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
           <label className="control-label">
             Algorithm
             <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value as SortAlgorithm)}>
-              {ALGORITHMS.map((a) => (
+              {SORT_ALGORITHMS.map((a) => (
                 <option key={a} value={a}>{a}</option>
               ))}
             </select>
@@ -440,10 +318,10 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
               least feedback. */}
           <button
             onClick={handleVerifyComparator}
-            disabled={!activeProblem || running || pythonRunning}
+            disabled={!activeProblem || running || py.running}
             title="Check that this problem's comparator is a valid ordering — a broken one makes a correct sort return a wrong answer with no error"
           >
-            {pythonRunning ? `Verifying... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Verify comparator'}
+            {py.running ? `Verifying... (${(py.elapsedMs / 1000).toFixed(1)}s)` : 'Verify comparator'}
           </button>
         </div>
       )}
@@ -458,36 +336,36 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
 
           {pythonSubMode === 'problem' && (
             <>
-              <PythonEditor value={pythonSource} onChange={setPythonSource} readOnly={pythonRunning} />
+              <PythonEditor value={pythonSource} onChange={setPythonSource} readOnly={py.running} />
               <div className="search-controls">
                 <label className="control-label">
                   Algorithm
                   <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value as SortAlgorithm)}>
-                    {ALGORITHMS.map((a) => (
+                    {SORT_ALGORITHMS.map((a) => (
                       <option key={a} value={a}>{a}</option>
                     ))}
                   </select>
                 </label>
-                <button onClick={handlePythonRun} disabled={pythonRunning}>
-                  {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run'}
+                <button onClick={handlePythonRun} disabled={py.running}>
+                  {py.running ? `Running... (${(py.elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run'}
                 </button>
-                {pythonRunning && <button onClick={handleStop}>Stop</button>}
+                {py.running && <button onClick={py.stop}>Stop</button>}
                 <CopyShareLinkButton payload={{ kind: 'sort-problem', source: pythonSource }} />
-                <button className="link-button" onClick={resetPythonSource} disabled={pythonRunning}>Reset to template</button>
+                <button className="link-button" onClick={resetPythonSource} disabled={py.running}>Reset to template</button>
               </div>
             </>
           )}
 
           {pythonSubMode === 'algorithm' && (
             <>
-              <PythonEditor value={pythonAlgorithmSource} onChange={setPythonAlgorithmSource} readOnly={pythonRunning} />
+              <PythonEditor value={pythonAlgorithmSource} onChange={setPythonAlgorithmSource} readOnly={py.running} />
               <div className="search-controls">
-                <button onClick={handlePythonAlgorithmRun} disabled={pythonRunning || !activeProblem}>
-                  {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run against active problem'}
+                <button onClick={handlePythonAlgorithmRun} disabled={py.running || !activeProblem}>
+                  {py.running ? `Running... (${(py.elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run against active problem'}
                 </button>
-                {pythonRunning && <button onClick={handleStop}>Stop</button>}
+                {py.running && <button onClick={py.stop}>Stop</button>}
                 <CopyShareLinkButton payload={{ kind: 'sort-algorithm', source: pythonAlgorithmSource }} />
-                <button className="link-button" onClick={resetPythonAlgorithmSource} disabled={pythonRunning}>Reset to template</button>
+                <button className="link-button" onClick={resetPythonAlgorithmSource} disabled={py.running}>Reset to template</button>
                 {!activeProblem && <span className="search-empty">Author or select a problem first.</span>}
               </div>
             </>
@@ -506,31 +384,31 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
                   />
                 </label>
               </div>
-              <PythonEditor value={pythonComparatorSource} onChange={setPythonComparatorSource} readOnly={pythonRunning} />
+              <PythonEditor value={pythonComparatorSource} onChange={setPythonComparatorSource} readOnly={py.running} />
               <div className="search-controls">
                 <label className="control-label">
                   Algorithm
                   <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value as SortAlgorithm)}>
-                    {ALGORITHMS.map((a) => (
+                    {SORT_ALGORITHMS.map((a) => (
                       <option key={a} value={a}>{a}</option>
                     ))}
                   </select>
                 </label>
-                <button onClick={handlePythonComparatorRun} disabled={pythonRunning}>
-                  {pythonRunning ? `Running... (${(elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run'}
+                <button onClick={handlePythonComparatorRun} disabled={py.running}>
+                  {py.running ? `Running... (${(py.elapsedMs / 1000).toFixed(1)}s)` : 'Validate & Run'}
                 </button>
                 <button
                   onClick={handleVerifyAuthoredComparator}
-                  disabled={pythonRunning}
+                  disabled={py.running}
                   title="Check the laws a sort depends on — a comparator can animate beautifully and still be an invalid ordering"
                 >
                   Validate &amp; Verify
                 </button>
-                {pythonRunning && <button onClick={handleStop}>Stop</button>}
+                {py.running && <button onClick={py.stop}>Stop</button>}
                 <CopyShareLinkButton
                   payload={{ kind: 'sort-comparator', source: pythonComparatorSource, values: parseComparatorValues(pythonComparatorValuesText) }}
                 />
-                <button className="link-button" onClick={resetPythonComparatorSource} disabled={pythonRunning}>Reset to template</button>
+                <button className="link-button" onClick={resetPythonComparatorSource} disabled={py.running}>Reset to template</button>
               </div>
             </>
           )}
@@ -538,23 +416,7 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
         </div>
       )}
 
-      {/* Outside the mode === 'python' block on purpose: built-in Run/New
-          Dataset can fail too (a rejected custom problem, a Pyodide load
-          failure), and while this lived inside that block those errors had
-          nowhere to render at all. */}
-      {pythonError && (
-        <div className="python-error">
-          <div className="python-error-message">{pythonError.friendly_error}</div>
-          {pythonError.raw_traceback && (
-            <>
-              <button className="python-error-toggle" onClick={() => setShowRawTraceback((s) => !s)}>
-                {showRawTraceback ? 'Hide details' : 'Show details'}
-              </button>
-              {showRawTraceback && <pre className="python-error-traceback">{pythonError.raw_traceback}</pre>}
-            </>
-          )}
-        </div>
-      )}
+      <PythonErrorBlock error={py.error} />
 
       {!activeProblem && (
         <p className="search-empty">

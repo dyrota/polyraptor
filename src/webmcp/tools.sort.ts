@@ -2,20 +2,8 @@ import type { ToolDefinition } from './registerTool';
 import { logged } from '../shared/activityLog';
 import { authorSortDataset, runSortAlgorithm, benchmarkCompareSort } from '../sort/runAlgorithm';
 import { putProblem, putTrace, getProblem, newProblemId } from '../sort/state';
+import { SORT_ALGORITHMS } from '../sort/types';
 import type { SortAlgorithm, SortDatasetType } from '../sort/types';
-
-const SORT_ALGORITHMS = [
-  'bubble_sort',
-  'selection_sort',
-  'insertion_sort',
-  'merge_sort',
-  'quick_sort',
-  'heap_sort',
-  'counting_sort',
-  'radix_sort',
-  'shell_sort',
-  'tim_sort',
-] as const;
 
 export const sortTools: ToolDefinition<never>[] = [
   {

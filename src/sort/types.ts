@@ -53,17 +53,23 @@ export interface SortTraceEntry {
   event: SortEvent;
 }
 
-export type SortAlgorithm =
-  | 'bubble_sort'
-  | 'selection_sort'
-  | 'insertion_sort'
-  | 'merge_sort'
-  | 'quick_sort'
-  | 'heap_sort'
-  | 'counting_sort'
-  | 'radix_sort'
-  | 'shell_sort'
-  | 'tim_sort';
+// Array first, union derived -- see search/types.ts's SEARCH_ALGORITHMS for
+// why. Same three copies existed here: the panel, sort_run_algorithm's enum,
+// and sort_run_algorithm_on_python_problem's enum.
+export const SORT_ALGORITHMS = [
+  'bubble_sort',
+  'selection_sort',
+  'insertion_sort',
+  'merge_sort',
+  'quick_sort',
+  'heap_sort',
+  'counting_sort',
+  'radix_sort',
+  'shell_sort',
+  'tim_sort',
+] as const;
+
+export type SortAlgorithm = (typeof SORT_ALGORITHMS)[number];
 
 export type SortDatasetType = 'random_integers' | 'nearly_sorted' | 'reverse_sorted' | 'many_duplicates' | 'custom' | 'python_problem';
 
