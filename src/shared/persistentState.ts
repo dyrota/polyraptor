@@ -53,14 +53,81 @@ export function clearStoredSource(slot: SourceSlot): void {
   }
 }
 
+// ---- displaced drafts ------------------------------------------------------
+// A shared link wins over whatever you had saved in that slot, which is the
+// right precedence -- someone was just handed this specific code and expects
+// to see it -- but it used to mean the draft underneath was destroyed on
+// arrival, silently and with no way back. Verified rather than assumed: type
+// into the search Problem editor, leave, open a `search-problem` share link,
+// and the stored draft is the shared source 400ms later, with no copy anywhere
+// in storage. "Reset to template" gives you the template, not your work, and
+// the `?shared=` param is stripped once consumed so the URL can't be re-read
+// either.
+//
+// So the displaced draft is set aside under its own key before the shared
+// value takes over, and the panel offers it back. This is the same shape of
+// answer as "Reset to template" above, for the same reason: once edits survive
+// reloads, anything that replaces them needs a way back.
+const DISPLACED_SUFFIX = ':displaced';
+
+function readDisplaced(slot: SourceSlot): string | null {
+  try {
+    return window.localStorage.getItem(NAMESPACE + slot + DISPLACED_SUFFIX);
+  } catch {
+    return null;
+  }
+}
+
+function writeDisplaced(slot: SourceSlot, value: string): void {
+  try {
+    window.localStorage.setItem(NAMESPACE + slot + DISPLACED_SUFFIX, value);
+  } catch {
+    /* storage full or blocked -- the draft is still on screen, just not backed up */
+  }
+}
+
+export function clearDisplacedSource(slot: SourceSlot): void {
+  try {
+    window.localStorage.removeItem(NAMESPACE + slot + DISPLACED_SUFFIX);
+  } catch {
+    /* nothing to do */
+  }
+}
+
 // Precedence: a shared link wins (someone was just handed this specific code
 // and expects to see it), then whatever was last typed here, then the template.
 export function usePersistedSource(
   slot: SourceSlot,
   sharedValue: string | undefined,
   template: string
-): [string, (next: string) => void, () => void] {
+): [string, (next: string) => void, () => void, string | null] {
   const [value, setValue] = useState(() => sharedValue ?? readStored(slot) ?? template);
+
+  // What a shared link is about to displace, if anything -- computed here in
+  // the initializer rather than in an effect because the notice that offers it
+  // back is a CHILD, and a child's render runs before the parent's effects. An
+  // effect would set this after the notice had already decided there was
+  // nothing to show.
+  //
+  // Last-wins when a second link arrives: the stored value is always "what was
+  // on screen until this link replaced it", which is the thing the notice
+  // offers back and the most recent work at risk. Preferring the oldest backup
+  // instead would protect a draft the user has already been offered once while
+  // discarding everything they did afterwards.
+  const [displaced] = useState<string | null>(() => {
+    const previous = readStored(slot);
+    const replacedByShare =
+      sharedValue !== undefined && previous !== null && previous !== sharedValue && previous !== template;
+    // A leftover from an earlier visit is still offered: the notice survives
+    // reloads until it is acted on, so someone who missed it on arrival can
+    // still recover the next day.
+    return replacedByShare ? previous : readDisplaced(slot);
+  });
+
+  useEffect(() => {
+    if (displaced !== null) writeDisplaced(slot, displaced);
+  }, [slot, displaced]);
+
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Read by the pagehide flush below, which must see the newest value without
   // re-subscribing its listener on every keystroke.
@@ -102,5 +169,5 @@ export function usePersistedSource(
     setValue(template);
   };
 
-  return [value, setValue, reset];
+  return [value, setValue, reset, displaced];
 }

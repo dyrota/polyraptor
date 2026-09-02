@@ -233,6 +233,49 @@ button, select, input {
 .mode-toggle.sub-toggle { margin-bottom: 0.75rem; }
 .mode-toggle.sub-toggle button { font-size: 0.82rem; padding: 0.32rem 0.7rem; }
 
+/* Sits directly above the editor whose contents a shared link replaced.
+   Amber-bordered rather than red: nothing has gone wrong, and nothing is lost
+   -- the draft is set aside and one click away. Treating it as an error would
+   overstate a recoverable situation. */
+.displaced-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.7rem;
+  margin-bottom: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--brand);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+.displaced-notice-text { color: var(--text-secondary); }
+.displaced-notice button {
+  padding: 0.3rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-hover);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.82rem;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.displaced-notice button:hover { background: #232a34; border-color: var(--text-muted); }
+/* Dismissing discards a recovery option, so it stays the quieter of the two --
+   same reasoning as "Reset to template" beside the run buttons. */
+.displaced-notice button.link-button {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
+}
+.displaced-notice button.link-button:hover {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+  text-decoration: underline;
+}
+
 .python-authoring { margin-bottom: 1rem; }
 .python-editor { border: 1px solid var(--border-strong); border-radius: 6px; overflow: hidden; margin-bottom: 0.5rem; }
 .python-error {

@@ -14,6 +14,7 @@ import { PythonEditor } from '../shared/PythonEditor';
 import { CopyShareLinkButton } from '../shared/CopyShareLinkButton';
 import { ActiveProblemBar } from '../shared/ActiveProblemBar';
 import { usePersistedSource } from '../shared/persistentState';
+import { DisplacedDraftNotice } from '../shared/DisplacedDraftNotice';
 import { humanAction } from '../shared/activityLog';
 import { usePythonRun } from '../shared/usePythonRun';
 import { PythonErrorBlock } from '../shared/PythonErrorBlock';
@@ -82,22 +83,24 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
     if (shared?.kind === 'sort-comparator') return 'comparator';
     return 'problem';
   });
-  const [pythonSource, setPythonSource, resetPythonSource] = usePersistedSource(
+  const [pythonSource, setPythonSource, resetPythonSource, displacedProblem] = usePersistedSource(
     'sort-problem',
     shared?.kind === 'sort-problem' ? shared.source : undefined,
     SORT_PROBLEM_TEMPLATE
   );
-  const [pythonAlgorithmSource, setPythonAlgorithmSource, resetPythonAlgorithmSource] = usePersistedSource(
+  const [pythonAlgorithmSource, setPythonAlgorithmSource, resetPythonAlgorithmSource, displacedAlgorithm] =
+    usePersistedSource(
     'sort-algorithm',
     shared?.kind === 'sort-algorithm' ? shared.source : undefined,
     SORT_ALGORITHM_TEMPLATE
   );
-  const [pythonComparatorValuesText, setPythonComparatorValuesText] = usePersistedSource(
+  const [pythonComparatorValuesText, setPythonComparatorValuesText, , displacedValues] = usePersistedSource(
     'sort-comparator-values',
     shared?.kind === 'sort-comparator' && shared.values ? shared.values.join(', ') : undefined,
     '5, 3, 8, 1, 9, 2'
   );
-  const [pythonComparatorSource, setPythonComparatorSource, resetPythonComparatorSource] = usePersistedSource(
+  const [pythonComparatorSource, setPythonComparatorSource, resetPythonComparatorSource, displacedComparator] =
+    usePersistedSource(
     'sort-comparator',
     shared?.kind === 'sort-comparator' ? shared.source : undefined,
     SORT_COMPARATOR_TEMPLATE
@@ -336,6 +339,10 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
 
           {pythonSubMode === 'problem' && (
             <>
+              <DisplacedDraftNotice
+                label="problem"
+                entries={[{ slot: 'sort-problem', displaced: displacedProblem, onRestore: setPythonSource }]}
+              />
               <PythonEditor value={pythonSource} onChange={setPythonSource} readOnly={py.running} />
               <div className="search-controls">
                 <label className="control-label">
@@ -358,6 +365,10 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
 
           {pythonSubMode === 'algorithm' && (
             <>
+              <DisplacedDraftNotice
+                label="algorithm"
+                entries={[{ slot: 'sort-algorithm', displaced: displacedAlgorithm, onRestore: setPythonAlgorithmSource }]}
+              />
               <PythonEditor value={pythonAlgorithmSource} onChange={setPythonAlgorithmSource} readOnly={py.running} />
               <div className="search-controls">
                 <button onClick={handlePythonAlgorithmRun} disabled={py.running || !activeProblem}>
@@ -373,6 +384,13 @@ export function SortPanel({ sharedPayload }: { sharedPayload: SharedPayload | nu
 
           {pythonSubMode === 'comparator' && (
             <>
+              <DisplacedDraftNotice
+                label="comparator"
+                entries={[
+                  { slot: 'sort-comparator', displaced: displacedComparator, onRestore: setPythonComparatorSource },
+                  { slot: 'sort-comparator-values', displaced: displacedValues, onRestore: setPythonComparatorValuesText },
+                ]}
+              />
               <div className="search-controls">
                 <label className="control-label">
                   Values (comma-separated)

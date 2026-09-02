@@ -18,6 +18,7 @@ import { GenericTraceLog } from '../shared/GenericTraceLog';
 import { ErrorBoundary } from '../shared/ErrorBoundary';
 import { CopyShareLinkButton } from '../shared/CopyShareLinkButton';
 import { usePersistedSource } from '../shared/persistentState';
+import { DisplacedDraftNotice } from '../shared/DisplacedDraftNotice';
 import { humanAction, noteHumanAction } from '../shared/activityLog';
 import { usePythonRun } from '../shared/usePythonRun';
 import { PythonErrorBlock } from '../shared/PythonErrorBlock';
@@ -88,18 +89,20 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
     if (shared?.kind === 'search-heuristic') return 'heuristic';
     return 'problem';
   });
-  const [pythonSource, setPythonSource, resetPythonSource] = usePersistedSource(
+  const [pythonSource, setPythonSource, resetPythonSource, displacedProblem] = usePersistedSource(
     'search-problem',
     shared?.kind === 'search-problem' ? shared.source : undefined,
     SEARCH_PROBLEM_TEMPLATE
   );
   const [pythonAlgorithm, setPythonAlgorithm] = useState<SearchAlgorithm>('a_star');
-  const [pythonAlgorithmSource, setPythonAlgorithmSource, resetPythonAlgorithmSource] = usePersistedSource(
+  const [pythonAlgorithmSource, setPythonAlgorithmSource, resetPythonAlgorithmSource, displacedAlgorithm] =
+    usePersistedSource(
     'search-algorithm',
     shared?.kind === 'search-algorithm' ? shared.source : undefined,
     SEARCH_ALGORITHM_TEMPLATE
   );
-  const [pythonHeuristicSource, setPythonHeuristicSource, resetPythonHeuristicSource] = usePersistedSource(
+  const [pythonHeuristicSource, setPythonHeuristicSource, resetPythonHeuristicSource, displacedHeuristic] =
+    usePersistedSource(
     'search-heuristic',
     shared?.kind === 'search-heuristic' ? shared.source : undefined,
     SEARCH_HEURISTIC_TEMPLATE
@@ -350,6 +353,10 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
 
           {pythonSubMode === 'problem' && (
             <>
+              <DisplacedDraftNotice
+                label="problem"
+                entries={[{ slot: 'search-problem', displaced: displacedProblem, onRestore: setPythonSource }]}
+              />
               <PythonEditor value={pythonSource} onChange={setPythonSource} readOnly={py.running} />
               <div className="search-controls">
                 <label className="control-label">
@@ -372,6 +379,10 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
 
           {pythonSubMode === 'algorithm' && (
             <>
+              <DisplacedDraftNotice
+                label="algorithm"
+                entries={[{ slot: 'search-algorithm', displaced: displacedAlgorithm, onRestore: setPythonAlgorithmSource }]}
+              />
               <PythonEditor value={pythonAlgorithmSource} onChange={setPythonAlgorithmSource} readOnly={py.running} />
               <div className="search-controls">
                 <button onClick={handlePythonAlgorithmRun} disabled={py.running || !activeProblem}>
@@ -387,6 +398,10 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
 
           {pythonSubMode === 'heuristic' && (
             <>
+              <DisplacedDraftNotice
+                label="heuristic"
+                entries={[{ slot: 'search-heuristic', displaced: displacedHeuristic, onRestore: setPythonHeuristicSource }]}
+              />
               <PythonEditor value={pythonHeuristicSource} onChange={setPythonHeuristicSource} readOnly={py.running} />
               <div className="search-controls">
                 <label className="control-label">

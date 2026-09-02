@@ -254,6 +254,66 @@ check(
 );
 
 // ---------------------------------------------------------------------------
+console.log('\n=== 12. a share link no longer destroys the draft it replaces ===');
+// A shared link wins over whatever is saved in that slot, which is the right
+// precedence -- but it used to overwrite the draft underneath silently, with no
+// copy kept anywhere and no way back ("Reset to template" gives you the
+// template, and the ?shared= param is stripped once consumed). The displaced
+// draft is now set aside and offered back.
+const MARK = '# MY_OWN_WORK_MARKER';
+const slotKey = (s) => 'polyraptor:v1:' + s;
+const readSlot = (s) => page.evaluate((k) => localStorage.getItem(k), slotKey(s));
+
+await page.evaluate(() => localStorage.clear());
+await page.goto(targetUrl, { waitUntil: 'load' });
+await page.waitForTimeout(1500);
+await page.click('.mode-toggle button:has-text("Write your own")');
+await page.click('.mode-toggle.sub-toggle button:has-text("Problem")');
+await page.waitForTimeout(250);
+await page.click('.python-editor .cm-content');
+await page.keyboard.press('Control+Home');
+await page.keyboard.type(`${MARK}\n`);
+await page.waitForTimeout(800); // past the 400ms persistence debounce
+check('the human\'s draft is saved', (await readSlot('search-problem'))?.includes(MARK));
+
+const shareHref =
+  targetUrl.replace(/\/?$/, '/') +
+  '?shared=' +
+  encodeURIComponent(JSON.stringify({ kind: 'search-problem', source: '# someone else\'s code\n' }));
+await page.goto(shareHref, { waitUntil: 'load' });
+await page.waitForTimeout(1500);
+check('the shared source is what loads', (await readSlot('search-problem'))?.startsWith("# someone else"));
+check('  -> and the displaced draft was kept, not destroyed', (await readSlot('search-problem:displaced'))?.includes(MARK));
+
+await page.click('.mode-toggle button:has-text("Write your own")');
+await page.waitForTimeout(300);
+check('a notice offers it back', await page.locator('.displaced-notice').isVisible().catch(() => false));
+await page.click('button:has-text("Restore my problem")');
+await page.waitForTimeout(800);
+check(
+  '  -> Restore returns it to the editor',
+  (await page.locator('.python-editor .cm-content').innerText()).includes(MARK)
+);
+check('  -> and clears the backup so it stops being offered', (await readSlot('search-problem:displaced')) === null);
+
+// An untouched template is not "work", so arriving on a link must not offer it
+// back. Reached by resetting rather than by clearing localStorage directly:
+// the pagehide flush writes the live page's React state on the way out, so
+// clearing storage under a page that still holds a draft just puts it back.
+// Resetting makes the page itself hold the template, which is the state under
+// test anyway.
+await page.click('button:has-text("Reset to template")');
+await page.waitForTimeout(800);
+await page.goto(shareHref, { waitUntil: 'load' });
+await page.waitForTimeout(1200);
+await page.click('.mode-toggle button:has-text("Write your own")');
+await page.waitForTimeout(300);
+check(
+  'an untouched template is not offered back as a displaced draft',
+  !(await page.locator('.displaced-notice').isVisible().catch(() => false))
+);
+
+// ---------------------------------------------------------------------------
 console.log('\n=== page errors ===');
 if (pageErrors.length) {
   console.log(pageErrors.join('\n---\n'));
