@@ -1,6 +1,24 @@
 import type { SearchTrace } from './types';
 import { deriveSearchVisualState } from './deriveVisualState';
 
+// Hoisted out of MissionariesView rather than declared inside it. A component
+// defined in a render body is a NEW component type on every render, so React
+// cannot match it against the previous tree and unmounts/remounts both banks
+// on every playback tick -- which for the one view that animates people moving
+// across a river is the worst place to throw away DOM.
+function Bank({ label, m, c, hasBoat }: { label: string; m: number; c: number; hasBoat: boolean }) {
+  return (
+    <div className="mc-bank" role="img" aria-label={`${label}: ${m} missionaries, ${c} cannibals${hasBoat ? ', boat here' : ''}`}>
+      <span className="mc-bank-label">{label}</span>
+      <div className="mc-icons" aria-hidden="true">
+        {Array.from({ length: m }).map((_, i) => <span key={`m${i}`}>🧑‍🦱</span>)}
+        {Array.from({ length: c }).map((_, i) => <span key={`c${i}`}>😈</span>)}
+      </div>
+      {hasBoat && <div className="mc-boat" aria-hidden="true">⛵</div>}
+    </div>
+  );
+}
+
 // Lower priority than the maze per the plan — simple but functional.
 export function MissionariesView({ trace }: { trace: SearchTrace | null }) {
   const atEnd = trace ? trace.currentSeq >= trace.entries.length - 1 : false;
@@ -19,17 +37,6 @@ export function MissionariesView({ trace }: { trace: SearchTrace | null }) {
   const leftC = cannibals;
   const rightM = 3 - leftM;
   const rightC = 3 - leftC;
-
-  const Bank = ({ label, m, c, hasBoat }: { label: string; m: number; c: number; hasBoat: boolean }) => (
-    <div className="mc-bank" role="img" aria-label={`${label}: ${m} missionaries, ${c} cannibals${hasBoat ? ', boat here' : ''}`}>
-      <span className="mc-bank-label">{label}</span>
-      <div className="mc-icons" aria-hidden="true">
-        {Array.from({ length: m }).map((_, i) => <span key={`m${i}`}>🧑‍🦱</span>)}
-        {Array.from({ length: c }).map((_, i) => <span key={`c${i}`}>😈</span>)}
-      </div>
-      {hasBoat && <div className="mc-boat" aria-hidden="true">⛵</div>}
-    </div>
-  );
 
   // The caption sits OUTSIDE .mc-wrapper: that wrapper is a flex row, so a
   // caption inside it became a third column squeezed beside the right bank

@@ -1,5 +1,8 @@
 node_modules/
 dist/
+# wrangler writes deploy/session state here on `npm run deploy` -- local
+# machine state, never part of the source tree.
+.wrangler/
 *.local
 .DS_Store
 dev-notes/phase0-check2/dummy_pkg/build/

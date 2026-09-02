@@ -153,6 +153,30 @@ async function freshPageWithShare(payload) {
   await context.close();
 }
 
+// ---- well-formed JSON, wrong TYPE inside: still must not crash ----
+// The decoder only ever validated `kind` and `source`, so a link whose
+// `values` was anything other than an array of numbers was cast through
+// untouched -- and SortPanel calls `shared.values.join(', ')` during render,
+// which throws on a string and dropped the entire app into the root error
+// boundary. A hand-edited or truncated link is exactly the case the decoder's
+// documented permissiveness exists for, so the bad field is dropped and the
+// source is still honoured.
+for (const [label, values] of [
+  ['a string', 'not-an-array'],
+  ['an object', { nope: 1 }],
+  ['an array of non-numbers', ['a', 'b']],
+]) {
+  const src = 'def comparator(a, b):\n    return 0  # marker_hostile_values';
+  const { context, page } = await freshPageWithShare({ kind: 'sort-comparator', source: src, values });
+  const crashed = await page.evaluate(() => !!document.querySelector('.error-boundary-fallback'));
+  check(`sort-comparator link with values as ${label} does not crash the app`, !crashed);
+  const editorText = await page.evaluate(() => document.querySelector('.cm-content')?.textContent);
+  check(`  -> the shared source is still honoured (${label})`, editorText?.includes('marker_hostile_values'), editorText);
+  const valuesInputValue = await page.evaluate(() => document.querySelector('input[type="text"]')?.value);
+  check(`  -> the values field falls back to its default (${label})`, valuesInputValue === '5, 3, 8, 1, 9, 2', valuesInputValue);
+  await context.close();
+}
+
 console.log('\n' + (allPass ? '=== ALL CASES PASS ===' : '=== AT LEAST ONE CASE FAILED ==='));
 await browser.close();
 process.exit(allPass ? 0 : 1);

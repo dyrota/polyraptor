@@ -4,8 +4,16 @@ import { authorPythonSortProblem, runAlgorithmOnPythonSortProblem } from '../sor
 import { authorPythonSortAlgorithm, runPythonAlgorithmOnProblem } from '../sort/runPythonAlgorithm';
 import { authorPythonSortComparator } from '../sort/runPythonComparator';
 import { verifyComparator, summarizeComparatorVerdict } from '../sort/verifyComparator';
-import { setVerification } from '../sort/state';
-import { putProblem, putTrace, getProblem, newProblemId, putAlgorithm, getAlgorithm, newAlgorithmId } from '../sort/state';
+import {
+  setVerification,
+  putProblem,
+  putTrace,
+  getProblem,
+  newProblemId,
+  putAlgorithm,
+  getAlgorithm,
+  newAlgorithmId,
+} from '../sort/state';
 import { SORT_ALGORITHMS } from '../sort/types';
 import type { SortAlgorithm } from '../sort/types';
 

@@ -1,4 +1,4 @@
-import { getTrace, updateTrace } from '../shared/traceStore';
+import { getTrace, peekTrace, updateTrace } from '../shared/traceStore';
 
 const timers = new Map<string, ReturnType<typeof setInterval>>();
 const BASE_INTERVAL_MS = 220; // per-step delay at speed=1
@@ -22,12 +22,21 @@ export function play(traceId: string, speed = 1): void {
   // then pause on the very next tick, so the button visibly did nothing --
   // the one moment a viewer is most likely to press it. Rewind instead: "play
   // again" is the only sensible reading of play-at-the-end.
-  const atEnd = getTrace(traceId).currentSeq >= getTrace(traceId).entries.length - 1;
+  const existing = getTrace(traceId);
+  const atEnd = existing.currentSeq >= existing.entries.length - 1;
   updateTrace(traceId, (t) => ({ ...t, playing: true, speed: clampedSpeed, currentSeq: atEnd ? -1 : t.currentSeq }));
 
   const interval = Math.max(15, BASE_INTERVAL_MS / clampedSpeed);
   const handle = setInterval(() => {
-    const trace = getTrace(traceId);
+    // peek, not get: the trace store evicts oldest-first under its event
+    // budget, so a trace left playing while newer, larger runs pile up can
+    // disappear underneath its own timer. Throwing here would raise once per
+    // tick, forever, with no caller to catch it -- stop instead.
+    const trace = peekTrace(traceId);
+    if (!trace) {
+      stopTimer(traceId);
+      return;
+    }
     const maxSeq = trace.entries.length - 1;
     if (trace.currentSeq >= maxSeq) {
       pause(traceId);

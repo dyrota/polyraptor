@@ -98,13 +98,6 @@ export interface AuthoredSortProblem {
   source_code?: string;
 }
 
-export interface PythonValidationError {
-  valid: false;
-  kind: string;
-  friendly_error: string;
-  raw_traceback: string;
-}
-
 export interface SortRunSummary {
   // Optional, not required: a custom (tier-2) algorithm has no obligation to
   // match the built-ins' return convention, so this whole strict shape may

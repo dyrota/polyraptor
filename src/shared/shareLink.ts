@@ -45,7 +45,24 @@ export function decodeSharedFromLocation(): SharedPayload | null {
       parsed.kind in SHARE_KIND_TAB &&
       typeof parsed.source === 'string'
     ) {
-      return parsed as SharedPayload;
+      // `values` is optional, so its ABSENCE is fine -- but a present one that
+      // isn't an array of numbers is not, and a blanket `parsed as SharedPayload`
+      // waved it through. SortPanel does `shared.values.join(', ')` on render, so
+      // a hand-edited link carrying a string there threw a TypeError mid-render
+      // and dropped the whole app into the root error boundary: precisely the
+      // "error page for what's ultimately a nice-to-have shortcut" this
+      // decoder's permissiveness exists to avoid. Dropped rather than rejected,
+      // since the source is still worth honouring and the values field just
+      // falls back to its default.
+      const values: number[] | undefined =
+        Array.isArray(parsed.values) && parsed.values.every((v: unknown) => typeof v === 'number' && Number.isFinite(v))
+          ? parsed.values
+          : undefined;
+      // Rebuilt field by field rather than returned wholesale, so nothing that
+      // was never validated rides along under the SharedPayload name.
+      return values === undefined
+        ? { kind: parsed.kind, source: parsed.source }
+        : { kind: parsed.kind, source: parsed.source, values };
     }
   } catch {
     // malformed -- fall through to null

@@ -188,13 +188,6 @@ button, select, input {
 
 .app-sidebar { position: sticky; top: 1.25rem; }
 
-.coming-soon {
-  padding: 3rem 1rem;
-  text-align: center;
-  color: var(--text-muted);
-  font-style: italic;
-}
-
 .search-controls {
   display: flex;
   gap: 0.5rem;
