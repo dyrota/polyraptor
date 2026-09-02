@@ -104,6 +104,22 @@ export default function App() {
         ))}
       </nav>
 
+      {/* Only once detection has actually answered (`null` means still
+          checking), and only when the answer is no. Everything below still
+          works without WebMCP -- the manual controls drive the same stores the
+          tools do -- so this says how to turn the other half on rather than
+          reporting a failure. The status line alone used to be the whole story,
+          and its recovery instructions lived in a console.warn nobody opens
+          devtools to read. */}
+      {webMcpStatus?.available === false && (
+        <div className="webmcp-help" role="status">
+          <strong>The agent half is switched off in this browser.</strong>{' '}
+          Everything here still works by hand — the buttons drive the same live state the tools do. To let an agent
+          drive it too, open this page in ChatGPT's in-app browser, or in Chrome with{' '}
+          <code>chrome://flags/#enable-webmcp-testing</code> enabled.
+        </div>
+      )}
+
       <main className="app-main">
         <div className="app-content" id="panel-family" role="tabpanel" aria-labelledby={tab === 'search' ? 'tab-search' : 'tab-sort'}>
           {tab === 'search' && <SearchPanel sharedPayload={sharedPayload} />}

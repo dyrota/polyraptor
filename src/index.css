@@ -100,6 +100,72 @@ button, select, input {
 .app-tabs button:hover { color: var(--text); }
 .app-tabs button.active { color: var(--text); font-weight: 600; border-bottom-color: var(--brand); }
 
+/* Informational, not an error: nothing is broken without WebMCP, half the
+   thesis is just unavailable. Brand amber rather than red for that reason. */
+.webmcp-help {
+  margin: 1rem 1.5rem 0;
+  padding: 0.7rem 0.9rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--brand);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.webmcp-help strong { color: var(--text); }
+.webmcp-help code {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  padding: 0.1rem 0.35rem;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* ---- Starter prompts ----------------------------------------------------
+   Whole rows are buttons, so the whole row is the target -- the text is the
+   thing you want, and making people hit a small icon beside it would be worse
+   for exactly the audience arriving here for the first time. */
+.starter-prompts { margin-top: 0.9rem; }
+.starter-prompts-lead {
+  margin: 0 0 0.45rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.starter-prompts ul { list-style: none; margin: 0; padding: 0; }
+.starter-prompts li { margin-bottom: 0.35rem; }
+.starter-prompts button {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.45rem 0.55rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.starter-prompts button:hover { background: var(--surface-hover); border-color: var(--text-muted); color: var(--text); }
+.starter-prompt-text { flex: 1; }
+.starter-prompt-copy {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.starter-prompts button:hover .starter-prompt-copy { color: var(--brand-strong); }
+
 .app-main {
   flex: 1;
   display: grid;

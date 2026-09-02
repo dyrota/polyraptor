@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { problemsStore, activeProblemIdStore, activeTraceIdStore, putProblem, putTrace, newProblemId, verificationStore, setVerification } from './state';
 import { tracesStore } from '../shared/traceStore';
 import { generateMaze } from './mazeGenerator';
@@ -120,6 +120,39 @@ export function SearchPanel({ sharedPayload }: { sharedPayload: SharedPayload | 
   // Always show the problem the active trace actually ran on, not just
   // whatever was last authored — same reasoning as sort/SortPanel.tsx.
   const activeProblem = activeTrace ? problems[activeTrace.problem_id] : activeProblemId ? problems[activeProblemId] : null;
+
+  // Open on something to look at, rather than on an empty box.
+  //
+  // The panel used to load with no canvas at all and a line of prose naming
+  // tool ids, so the first thing anyone saw -- judge, student, or the opening
+  // frame of a demo -- was two-thirds of an empty screen. A maze costs nothing
+  // to generate (pure JS, no Pyodide) and is the app's clearest single image.
+  //
+  // Three guards, each for a real case:
+  //   - a shared link is arriving, and seeding would fight it for the panel;
+  //   - a problem already exists, which under StrictMode's deliberate
+  //     mount/unmount/remount is how the second pass sees the first pass's
+  //     work, and in production is how an agent that got a tool call in first
+  //     keeps it;
+  //   - nothing is logged, because nobody did this. It is not a human action
+  //     and claiming otherwise in a timeline whose whole point is who-did-what
+  //     would be a lie told by the one panel that exists to tell the truth.
+  // `origin` is left unset for the same reason: neither badge would be honest.
+  useEffect(() => {
+    if (shared) return;
+    if (Object.keys(problemsStore.getState()).length > 0) return;
+    // A fixed seed so the first screen is the same known-good maze every time
+    // -- worth more than novelty for something people will screenshot, record,
+    // and compare notes about. "New Maze" is right there for a different one.
+    const generated = generateMaze({ rows: 12, cols: 16, wallDensity: 0.28, seed: 20260903 });
+    putProblem({
+      problem_id: newProblemId('maze'),
+      type: 'maze',
+      maze: generated.maze,
+      start: generated.start,
+      goal: generated.goal,
+    });
+  }, [shared]);
 
   function handleNewMaze() {
     const generated = generateMaze({ rows: 12, cols: 16, wallDensity: 0.3 });

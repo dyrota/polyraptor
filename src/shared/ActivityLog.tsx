@@ -1,5 +1,6 @@
 import { useState, useSyncExternalStore } from 'react';
 import { activityLogStore, type Actor } from './activityLog';
+import { StarterPrompts } from './StarterPrompts';
 
 // Visible on-page record of everything that touched this page, from either
 // side, in near-real time. Agent tool calls and human clicks are rendered as
@@ -56,10 +57,19 @@ export function ActivityLog() {
         ))}
       </div>
 
+      {/* The starter prompts live HERE, in the panel where an agent's work will
+          appear, and vanish the moment anything does. Putting them in a panel's
+          own empty state would have been worse in both directions: they would
+          be gone as soon as a problem existed (including the one seeded on
+          first load), and they would sit next to the manual buttons rather than
+          next to the timeline they are trying to fill. */}
       {entries.length === 0 && (
-        <p className="activity-log-empty">
-          Nothing yet. Click a button, or ask your agent to author a problem and run an algorithm — both land here.
-        </p>
+        <>
+          <p className="activity-log-empty">
+            Nothing yet. Click a button, or ask your agent — both land here, on one timeline.
+          </p>
+          <StarterPrompts />
+        </>
       )}
       {entries.length > 0 && shown.length === 0 && (
         <p className="activity-log-empty">Nothing from {filter === 'human' ? 'you' : 'the agent'} yet.</p>

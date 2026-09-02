@@ -39,7 +39,11 @@ function describeTrace(traceId: string | null) {
 }
 
 function describeSearchProblem(p: AuthoredProblem, full: boolean) {
-  const base: Record<string, unknown> = { problem_id: p.problem_id, type: p.type };
+  // `origin` is the whole point of a discovery call: "the human made this one"
+  // is what lets an agent narrate the shared state honestly rather than
+  // assuming everything it can see is its own work. Absent for the maze seeded
+  // on first load, which neither party created.
+  const base: Record<string, unknown> = { problem_id: p.problem_id, type: p.type, created_by: p.origin ?? 'preloaded' };
   if (p.type === 'maze') {
     base.rows = p.maze?.length ?? null;
     base.cols = p.maze?.[0]?.length ?? null;
@@ -62,6 +66,7 @@ function describeSortProblem(p: AuthoredSortProblem, full: boolean) {
     problem_id: p.problem_id,
     dataset_type: p.dataset_type,
     size: p.size,
+    created_by: p.origin ?? 'preloaded',
   };
   if (full) {
     base.values = p.values;
@@ -84,7 +89,8 @@ export const stateTools: ToolDefinition<never>[] = [
     name: 'search_get_state',
     description:
       'Report everything the Search panel currently holds: the active problem (with its full grid, if a maze), ' +
-      'every problem_id authored so far, the ids of any custom algorithms and heuristics, the active trace and ' +
+      'every problem_id authored so far (each tagged with created_by: "human" or "agent", so you can tell what the ' +
+      'person did from what you did), the ids of any custom algorithms and heuristics, the active trace and ' +
       'its exact playback position, and the most recent heuristic verification verdict. ' +
       'Call this FIRST if you did not author the current state yourself — the human can create problems by ' +
       'clicking "New Maze" in the page, and those ids exist but were never returned to you. Also the right ' +
@@ -125,7 +131,8 @@ export const stateTools: ToolDefinition<never>[] = [
     name: 'sort_get_state',
     description:
       'Report everything the Sort panel currently holds: the active problem (with its full value list), every ' +
-      'problem_id authored so far, the ids of any custom algorithms, the active trace with its exact ' +
+      'problem_id authored so far (each tagged with created_by: "human" or "agent"), the ids of any custom ' +
+      'algorithms, the active trace with its exact ' +
       'playback position, and the most recent comparator verification verdict. ' +
       'Call this FIRST if you did not author the current state yourself — the human can create datasets by ' +
       'clicking "New Dataset" in the page, and those ids exist but were never returned to you. Also the right ' +
