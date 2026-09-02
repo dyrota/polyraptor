@@ -81,7 +81,13 @@ npm install
 npm run dev
 ```
 
-Open the URL it prints in Chrome with `chrome://flags/#enable-webmcp-testing` enabled, or in ChatGPT's in-app browser.
+Open the URL it prints in Chrome with `chrome://flags/#enable-webmcp-testing` enabled, or in ChatGPT's in-app browser. Without either, the page says so and everything still works by hand — the manual controls drive the same live state the WebMCP tools do, so the app is exactly half of itself rather than broken.
+
+It deploys as static files to Cloudflare Workers (`wrangler.jsonc` points at `dist/`, no Worker script — there is no server-side anything to run):
+
+```
+npm run deploy          # build, then publish dist/
+```
 
 `scripts/e2e-*.mjs` are Playwright-based smoke tests driving real Chrome, real WebMCP tool calls, and real Pyodide.
 
