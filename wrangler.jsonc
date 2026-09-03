@@ -8,5 +8,28 @@
   "compatibility_date": "2026-08-30",
   "assets": {
     "directory": "./dist"
-  }
+  },
+  // Declared here rather than clicked into the dashboard so the domain a
+  // deploy targets is part of the repo -- `npm run deploy` creates the DNS
+  // records and issues the certificates on its own, and a fresh checkout
+  // deploys to the same place without anyone remembering to reattach it.
+  //
+  // "custom_domain" (not a plain route pattern) is the right form for a zone
+  // whose whole purpose is this Worker: it points the hostname straight at the
+  // Worker instead of layering it over an existing origin. It requires the
+  // zone to be active on Cloudflare, so a deploy fails loudly rather than
+  // half-working if DNS is not ready.
+  "routes": [
+    { "pattern": "polyraptor.com", "custom_domain": true },
+    { "pattern": "www.polyraptor.com", "custom_domain": true }
+  ],
+  // Both explicit, and NOT redundant: declaring "routes" above silently flips
+  // the default for these two from true to false, so omitting them is not
+  // "leave things as they were" -- it is a decision to switch the workers.dev
+  // URL and every Preview URL off, taken by accident. Keeping the generated
+  // URL alive costs nothing and leaves a way to reach the app when something
+  // is wrong with the custom domain specifically, which is exactly the moment
+  // a fallback earns its keep.
+  "workers_dev": true,
+  "preview_urls": true
 }
